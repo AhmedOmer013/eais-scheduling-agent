@@ -1,0 +1,5 @@
+sector: paused
+enabled: false
+skill_pack: clinic_v1
+approval_required_for:
+  - missing_required_field

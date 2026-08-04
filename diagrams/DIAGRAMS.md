@@ -69,23 +69,25 @@ sequenceDiagram
     participant Store as Booking Store
     participant Audit as Audit Trail
 
-    Cust->>Intake: free text ("table for 4 tomorrow 8pm")
+    Cust->>Core: handle(text, sector)
+    Core->>Manifest: load(path)
+    Manifest-->>Core: enabled, skill_pack ref, approval_required_for
+    Core->>Core: resolve sector's skill pack from injected mapping
+    Core->>Intake: parse(text, sector)
     alt LLM mode
         Intake->>Intake: call LLM, extract structured fields
     else offline mode
         Intake->>Intake: deterministic rule/regex parse
     end
     Intake-->>Core: BookingRequest{sector, fields}
-    Core->>Manifest: load(sector)
-    Manifest-->>Core: enabled, skill_pack ref, approval_required_for
     Core->>SP: get rules()
     SP-->>Core: required_fields, working_hours, slot_rules, template
-    Core->>Store: check_conflict(request)
+    Core->>Store: check_conflict(request, slot)
     Store-->>Core: conflict: true/false
     Core->>Gate: evaluate(request, rules, conflict)
     alt within rules, no conflict
         Gate-->>Core: CONFIRMED
-        Core->>Store: persist(booking)
+        Core->>Store: persist(request, slot)
     else violates a rule or conflicts
         Gate-->>Core: PENDING_APPROVAL(reason)
     end
@@ -135,7 +137,7 @@ classDiagram
         +bool enabled
         +str skill_pack
         +list approval_required_for
-        +load(sector) SectorManifest
+        +load(path) SectorManifest
     }
     class SkillPack {
         <<abstract>>
@@ -153,20 +155,20 @@ classDiagram
     }
     class IntakeService {
         <<interface>>
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class LLMIntake {
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class OfflineIntake {
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class ApprovalGate {
         +evaluate(request, rules, conflict) Decision
     }
     class BookingStore {
-        +check_conflict(request) bool
-        +persist(request)
+        +check_conflict(request, slot) bool
+        +persist(request, slot)
     }
     class AuditTrail {
         +append(record) void
@@ -176,6 +178,8 @@ classDiagram
         -ApprovalGate gate
         -BookingStore store
         -AuditTrail audit
+        -Mapping~str, SkillPack~ skill_packs
+        -Path manifest_dir
         +handle(text, sector) Decision
     }
 

@@ -16,7 +16,12 @@ class BookingRequest:
     """A booking request captured from unstructured input.
 
     Attributes:
-        sector: Identifier tag (e.g. "clinic", "restaurant") attached by intake.
+        sector: Identifier tag naming the sector this request belongs to,
+            attached by intake. Matches the `sector` field of that sector's
+            manifest. Carried for routing and reporting only -- never
+            branched on inside `core/` (see FR1). Deliberately not
+            illustrated with an example sector name here: `core/` must stay
+            free of sector-named identifiers, docstrings included.
         fields: Structured fields extracted by intake (sector- and skill-pack-defined).
         raw_text: Original free-text input, kept for audit.
     """
