@@ -1,0 +1,82 @@
+classDiagram
+    class BookingRequest {
+        +str sector
+        +dict fields
+        +str raw_text
+    }
+    class Decision {
+        +str status
+        +str reason
+    }
+    class AuditRecord {
+        +str input
+        +str skill_pack
+        +dict intent
+        +list rules_evaluated
+        +str decision
+        +str approval_status
+        +datetime timestamp
+    }
+    class SectorManifest {
+        +str sector
+        +bool enabled
+        +str skill_pack
+        +list approval_required_for
+        +load(sector) SectorManifest
+    }
+    class SkillPack {
+        <<abstract>>
+        +list required_fields
+        +dict working_hours
+        +validate(request) list
+        +slot_rules(request) SlotInfo
+        +confirmation_template() str
+    }
+    class ClinicSkillPack {
+        fixed slot length per practitioner
+    }
+    class RestaurantSkillPack {
+        capacity and party-size rules
+    }
+    class IntakeService {
+        <<interface>>
+        +parse(text) BookingRequest
+    }
+    class LLMIntake {
+        +parse(text) BookingRequest
+    }
+    class OfflineIntake {
+        +parse(text) BookingRequest
+    }
+    class ApprovalGate {
+        +evaluate(request, rules, conflict) Decision
+    }
+    class BookingStore {
+        +check_conflict(request) bool
+        +persist(request)
+    }
+    class AuditTrail {
+        +append(record) void
+    }
+    class SchedulingAgentCore {
+        -IntakeService intake
+        -ApprovalGate gate
+        -BookingStore store
+        -AuditTrail audit
+        +handle(text, sector) Decision
+    }
+
+    SkillPack <|-- ClinicSkillPack
+    SkillPack <|-- RestaurantSkillPack
+    IntakeService <|.. LLMIntake
+    IntakeService <|.. OfflineIntake
+    SchedulingAgentCore --> IntakeService
+    SchedulingAgentCore --> ApprovalGate
+    SchedulingAgentCore --> BookingStore
+    SchedulingAgentCore --> AuditTrail
+    SchedulingAgentCore --> SectorManifest
+    SchedulingAgentCore --> SkillPack
+    SchedulingAgentCore ..> BookingRequest
+    SchedulingAgentCore ..> Decision
+    ApprovalGate ..> Decision
+    AuditTrail --> AuditRecord

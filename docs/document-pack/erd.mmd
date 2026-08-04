@@ -1,0 +1,48 @@
+erDiagram
+    SECTOR_MANIFEST ||--|| SKILL_PACK_CONFIG : declares
+    SKILL_PACK_CONFIG ||--o{ BOOKING : governs
+    SECTOR_MANIFEST ||--o{ BOOKING : scopes
+    BOOKING_REQUEST ||--|| DECISION : produces
+    BOOKING_REQUEST ||--|| AUDIT_RECORD : logs
+    BOOKING }o--o{ BOOKING : "may conflict with"
+
+    SECTOR_MANIFEST {
+        string sector PK
+        bool enabled
+        string skill_pack_ref FK
+        list approval_required_for
+    }
+    SKILL_PACK_CONFIG {
+        string id PK
+        list required_fields
+        json working_hours
+        json slot_rules
+        string confirmation_template
+    }
+    BOOKING {
+        string id PK
+        string sector FK
+        json fields
+        datetime start_time
+        int duration_minutes
+        string status
+    }
+    BOOKING_REQUEST {
+        string raw_text
+        string sector
+        json fields
+    }
+    DECISION {
+        string status
+        string reason
+    }
+    AUDIT_RECORD {
+        string id PK
+        json input
+        string skill_pack_ref
+        json intent
+        json rules_evaluated
+        string decision
+        string approval_status
+        datetime timestamp
+    }
