@@ -7,10 +7,31 @@ with ISO 8601 datetime serialization, durable writes via open-per-call.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 from eais_scheduling_agent.core.interfaces import AuditTrail
 from eais_scheduling_agent.core.models import AuditRecord
+
+
+def _json_safe(value: Any) -> Any:
+    """Recursively convert `datetime` values to ISO 8601 strings.
+
+    `AuditRecord.intent` is `dict(request.fields)` (T6) -- a copy of
+    whatever a skill pack's `BookingRequest.fields` contains. Every
+    current skill pack (T5, T10) puts a real `datetime.datetime` under
+    `start_time`, which `json.dumps` cannot serialize on its own. This
+    walks the structure generically (not keyed on `"start_time"`
+    specifically) so any future field of datetime type is handled the
+    same way, without `core/audit.py` needing to know a sector's field
+    names.
+    """
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 class JsonLinesAuditTrail(AuditTrail):
@@ -70,8 +91,10 @@ class JsonLinesAuditTrail(AuditTrail):
     def _record_to_json(record: AuditRecord) -> dict:
         """Convert an AuditRecord to a JSON-serializable dict.
 
-        Converts the datetime field to ISO 8601 string format; all other
-        fields are JSON-native (str, dict, list).
+        Converts `timestamp` to an ISO 8601 string. `intent` is passed
+        through `_json_safe` since it can itself contain `datetime`
+        values (e.g. `start_time`) -- everything else on `AuditRecord`
+        is already JSON-native (str, list of str).
 
         Args:
             record: The audit record to convert.
@@ -83,7 +106,7 @@ class JsonLinesAuditTrail(AuditTrail):
         return {
             "input": record.input,
             "skill_pack": record.skill_pack,
-            "intent": record.intent,
+            "intent": _json_safe(record.intent),
             "rules_evaluated": record.rules_evaluated,
             "decision": record.decision,
             "approval_status": record.approval_status,

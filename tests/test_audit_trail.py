@@ -188,6 +188,61 @@ class TestAuditTrailDirectoryHandling:
         assert len(lines) == 1
 
 
+class TestAuditTrailIntentWithDatetime:
+    """intent (a copy of BookingRequest.fields) can itself contain a real
+    datetime.datetime -- every current skill pack (T5, T10) puts one under
+    "start_time". The original fixtures above never exercised this since
+    their intent dicts were string-only, which is exactly how this bug
+    shipped unnoticed until an end-to-end run during T12 hit it.
+    """
+
+    def test_append_does_not_crash_on_datetime_valued_intent(self, tmp_path):
+        record = AuditRecord(
+            input="Book Dr. Salem Tuesday 10:30am",
+            skill_pack="clinic_v1",
+            intent={
+                "practitioner": "Dr. Salem",
+                "start_time": datetime(2026, 8, 11, 10, 30, tzinfo=timezone.utc),
+            },
+            rules_evaluated=[
+                "required_fields: ok",
+                "skill_pack_validation: ok",
+                "conflict_check: none",
+            ],
+            decision="CONFIRMED",
+            approval_status="not_required",
+            timestamp=datetime(2026, 8, 5, 9, 0, 0, tzinfo=timezone.utc),
+        )
+        trail = JsonLinesAuditTrail(tmp_path / "audit.jsonl")
+
+        trail.append(record)  # must not raise TypeError
+
+        line = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip()
+        parsed = json.loads(line)
+        assert parsed["intent"]["start_time"] == "2026-08-11T10:30:00+00:00"
+        assert parsed["intent"]["practitioner"] == "Dr. Salem"
+
+    def test_nested_datetime_inside_intent_is_also_converted(self, tmp_path):
+        record = AuditRecord(
+            input="text",
+            skill_pack="restaurant_v1",
+            intent={
+                "party_size": 4,
+                "details": {"start_time": datetime(2026, 8, 11, 20, 0, tzinfo=timezone.utc)},
+            },
+            rules_evaluated=["required_fields: ok", "skill_pack_validation: ok", "conflict_check: none"],
+            decision="CONFIRMED",
+            approval_status="not_required",
+            timestamp=datetime(2026, 8, 5, 9, 0, 0, tzinfo=timezone.utc),
+        )
+        trail = JsonLinesAuditTrail(tmp_path / "audit.jsonl")
+
+        trail.append(record)
+
+        parsed = json.loads((tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip())
+        assert parsed["intent"]["details"]["start_time"] == "2026-08-11T20:00:00+00:00"
+
+
 class TestAuditTrailAppendMode:
     """Test that multiple instances append without truncation."""
 
