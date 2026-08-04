@@ -8,15 +8,17 @@ sequenceDiagram
     participant Store as Booking Store
     participant Audit as Audit Trail
 
-    Cust->>Intake: free text ("table for 4 tomorrow 8pm")
+    Cust->>Core: handle(text, sector)
+    Core->>Manifest: load(path)
+    Manifest-->>Core: enabled, skill_pack ref, approval_required_for
+    Core->>Core: resolve sector's skill pack from injected mapping
+    Core->>Intake: parse(text, sector)
     alt LLM mode
         Intake->>Intake: call LLM, extract structured fields
     else offline mode
         Intake->>Intake: deterministic rule/regex parse
     end
     Intake-->>Core: BookingRequest{sector, fields}
-    Core->>Manifest: load(path)
-    Manifest-->>Core: enabled, skill_pack ref, approval_required_for
     Core->>SP: get rules()
     SP-->>Core: required_fields, working_hours, slot_rules, template
     Core->>Store: check_conflict(request, slot)
