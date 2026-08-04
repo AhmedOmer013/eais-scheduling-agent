@@ -158,7 +158,12 @@ class TestConfirmedPathEndToEnd:
         request, slot = store.persisted[0]
         assert request.sector == SECTOR
         # Real ClinicSkillPack: "Dr. A" is a 30-minute, capacity-1 slot.
-        assert slot == SlotInfo(duration_minutes=30, capacity=1)
+        assert slot == SlotInfo(
+            duration_minutes=30,
+            capacity=1,
+            resource_key="practitioner:Dr. A",
+            start=VALID_FIELDS["start_time"],
+        )
 
     def test_conflict_check_runs_before_the_gate_with_the_same_slot(self):
         core, _, gate, store, _ = build_core()
@@ -166,7 +171,12 @@ class TestConfirmedPathEndToEnd:
         core.handle(TEXT, SECTOR)
 
         assert len(store.conflict_calls) == 1
-        assert store.conflict_calls[0][1] == SlotInfo(duration_minutes=30, capacity=1)
+        assert store.conflict_calls[0][1] == SlotInfo(
+            duration_minutes=30,
+            capacity=1,
+            resource_key="practitioner:Dr. A",
+            start=VALID_FIELDS["start_time"],
+        )
         assert gate.calls[0][2] is False
 
     def test_gate_sees_clean_rules_from_the_real_pack_and_manifest(self):
@@ -271,7 +281,12 @@ class TestGateDecisionIsAuthoritative:
         # No slot was costed during rule evaluation (the pack objected), so
         # the core computes one here rather than persisting without a
         # footprint the store can later compare against.
-        assert store.persisted[0][1] == SlotInfo(duration_minutes=30, capacity=1)
+        assert store.persisted[0][1] == SlotInfo(
+            duration_minutes=30,
+            capacity=1,
+            resource_key="practitioner:Dr. A",
+            start=OUT_OF_HOURS_FIELDS["start_time"],
+        )
 
     def test_audit_still_reports_the_conflict_check_as_skipped(self):
         """Costing a slot late must not look like a conflict check ran."""
@@ -542,7 +557,12 @@ class TestSkillPackResolution:
                 return []
 
             def slot_rules(self, request):
-                return SlotInfo(duration_minutes=15, capacity=2)
+                return SlotInfo(
+                    duration_minutes=15,
+                    capacity=2,
+                    resource_key="thing:widget",
+                    start=datetime(2026, 8, 5, 10, 30),
+                )
 
             def confirmation_template(self):
                 return "ok"

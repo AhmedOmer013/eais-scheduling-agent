@@ -6,8 +6,10 @@ and separately proves that `abc` actually enforces the contract rather
 than it being documentation only.
 """
 
-import pytest
 from dataclasses import FrozenInstanceError
+from datetime import datetime
+
+import pytest
 
 from eais_scheduling_agent.core.models import BookingRequest
 from eais_scheduling_agent.skillpacks.base import SkillPack, SlotInfo
@@ -27,7 +29,12 @@ class FakeSkillPack(SkillPack):
         return [] if "thing" in request.fields else ["missing required field: thing"]
 
     def slot_rules(self, request):
-        return SlotInfo(duration_minutes=30, capacity=1)
+        return SlotInfo(
+            duration_minutes=30,
+            capacity=1,
+            resource_key="thing:widget",
+            start=datetime(2026, 8, 4, 10, 0),
+        )
 
     def confirmation_template(self):
         return "Your booking for {thing} is confirmed."
@@ -76,6 +83,8 @@ class TestFakeSkillPackSatisfiesInterface:
         assert isinstance(slot, SlotInfo)
         assert slot.duration_minutes == 30
         assert slot.capacity == 1
+        assert slot.resource_key == "thing:widget"
+        assert slot.start == datetime(2026, 8, 4, 10, 0)
 
     def test_confirmation_template_returns_str(self):
         pack = FakeSkillPack()
@@ -90,13 +99,25 @@ class TestSlotInfo:
     """SlotInfo follows T2/T3's frozen-dataclass style."""
 
     def test_construction_and_field_access(self):
-        slot = SlotInfo(duration_minutes=45, capacity=4)
+        slot = SlotInfo(
+            duration_minutes=45,
+            capacity=4,
+            resource_key="table:5",
+            start=datetime(2026, 8, 4, 12, 0),
+        )
 
         assert slot.duration_minutes == 45
         assert slot.capacity == 4
+        assert slot.resource_key == "table:5"
+        assert slot.start == datetime(2026, 8, 4, 12, 0)
 
     def test_immutable(self):
-        slot = SlotInfo(duration_minutes=45, capacity=4)
+        slot = SlotInfo(
+            duration_minutes=45,
+            capacity=4,
+            resource_key="table:5",
+            start=datetime(2026, 8, 4, 12, 0),
+        )
 
         with pytest.raises(FrozenInstanceError):
             slot.duration_minutes = 60

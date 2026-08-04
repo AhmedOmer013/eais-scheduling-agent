@@ -193,7 +193,14 @@ class ClinicSkillPack(SkillPack):
         """Return the fixed slot length for the request's practitioner.
 
         Capacity is always 1 (one practitioner, one patient at a time),
-        per `SlotInfo`'s docstring in `skillpacks/base.py`.
+        per `SlotInfo`'s docstring in `skillpacks/base.py`. `resource_key`
+        is `f"practitioner:{practitioner}"` -- opaque to everything
+        downstream (T9's `BookingStore` only ever compares it for
+        equality), so the exact format is this pack's own choice; the
+        `"practitioner:"` prefix just keeps it human-readable for
+        debugging. `start` is the request's already-validated
+        `start_time`, passed through unchanged via `_extract_fields`
+        rather than re-derived.
 
         Raises:
             KeyError: if `request.fields` is missing `practitioner` or
@@ -205,14 +212,19 @@ class ClinicSkillPack(SkillPack):
                 defensive guard, not this method's primary validation
                 path.
         """
-        practitioner, _start_time = self._extract_fields(request)
+        practitioner, start_time = self._extract_fields(request)
 
         if practitioner not in self._practitioners:
             raise ValueError(
                 f"cannot compute slot rules for unknown practitioner: {practitioner!r}"
             )
 
-        return SlotInfo(duration_minutes=self._practitioners[practitioner], capacity=1)
+        return SlotInfo(
+            duration_minutes=self._practitioners[practitioner],
+            capacity=1,
+            resource_key=f"practitioner:{practitioner}",
+            start=start_time,
+        )
 
     def confirmation_template(self) -> str:
         """Return the CONFIRMED-decision message template.
