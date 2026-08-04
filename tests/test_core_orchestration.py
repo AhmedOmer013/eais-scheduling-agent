@@ -14,6 +14,8 @@ at the bottom of this file enforces that boundary on `core/` itself.
 """
 
 import re
+from collections.abc import Mapping
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 from pathlib import Path
 
@@ -29,12 +31,14 @@ from eais_scheduling_agent.core.interfaces import (
 )
 from eais_scheduling_agent.core.models import AuditRecord, BookingRequest, Decision
 from eais_scheduling_agent.core.orchestrator import (
+    InvalidManifestError,
     OrchestrationError,
     SchedulingAgentCore,
     SectorDisabledError,
     UnknownSectorError,
     UnknownSkillPackError,
 )
+from eais_scheduling_agent.manifests.manifest import ManifestValidationError
 from eais_scheduling_agent.skillpacks.base import SkillPack, SlotInfo
 from eais_scheduling_agent.skillpacks.clinic import ClinicSkillPack
 
@@ -269,6 +273,59 @@ class TestGateDecisionIsAuthoritative:
         # footprint the store can later compare against.
         assert store.persisted[0][1] == SlotInfo(duration_minutes=30, capacity=1)
 
+    def test_audit_still_reports_the_conflict_check_as_skipped(self):
+        """Costing a slot late must not look like a conflict check ran."""
+        core, _, _, store, audit = build_core(fields=OUT_OF_HOURS_FIELDS)
+
+        core.handle(TEXT, SECTOR)
+
+        assert store.conflict_calls == []
+        assert (
+            audit.records[0].rules_evaluated[2]
+            == "conflict_check: skipped (rules not satisfied)"
+        )
+
+
+class TestAuditSurvivesFailuresAfterTheDecision:
+    """One record per decided request, even when storing it then fails."""
+
+    def test_a_failing_persist_still_leaves_exactly_one_record(self):
+        core, _, _, store, audit = build_core()
+
+        def exploding_persist(request, slot):
+            raise RuntimeError("disk on fire")
+
+        store.persist = exploding_persist
+
+        with pytest.raises(RuntimeError):
+            core.handle(TEXT, SECTOR)
+
+        assert len(audit.records) == 1
+        assert audit.records[0].decision == "CONFIRMED"
+
+    def test_a_failing_late_slot_costing_still_leaves_exactly_one_record(self):
+        """The pack refuses to cost a request it rejected; audit anyway."""
+        core = SchedulingAgentCore(
+            manifest_dir=SECTOR_FIXTURES,
+            # Unknown practitioner: validate() reports a violation, and
+            # slot_rules() then raises ValueError when the gate confirms
+            # anyway, inside the persist step.
+            skill_packs={PACK_ID: ClinicSkillPack()},
+            intake=FakeIntake(dict(VALID_FIELDS, practitioner="Dr. Nobody")),
+            gate=FakeGate(),
+            store=(store := FakeStore()),
+            audit=(audit := FakeAudit()),
+        )
+
+        with pytest.raises(ValueError):
+            core.handle(TEXT, SECTOR)
+
+        assert store.persisted == []
+        assert len(audit.records) == 1
+        assert audit.records[0].rules_evaluated[2] == (
+            "conflict_check: skipped (rules not satisfied)"
+        )
+
 
 class TestMissingRequiredFields:
     """The generic missing-field check runs in the core, before the pack."""
@@ -327,13 +384,15 @@ class TestAuditRecordContent:
         ]
 
     def test_intent_is_a_copy_not_the_live_request_fields(self):
-        core, _, _, _, audit = build_core()
+        core, _, gate, _, audit = build_core()
 
         core.handle(TEXT, SECTOR)
-        record = audit.records[0]
-        record.intent["practitioner"] = "tampered"
+        # The request the core actually built and passed on -- not the
+        # module-level dict, which FakeIntake already copied.
+        handled_request = gate.calls[0][0]
+        audit.records[0].intent["practitioner"] = "tampered"
 
-        assert VALID_FIELDS["practitioner"] == "Dr. A"
+        assert handled_request.fields["practitioner"] == "Dr. A"
 
 
 class TestConfigurationFailures:
@@ -357,8 +416,48 @@ class TestConfigurationFailures:
         with pytest.raises(UnknownSkillPackError):
             core.handle(TEXT, "orphan")
 
+    def test_malformed_manifest_raises_an_orchestration_error(self):
+        """A manifest typo must not escape as a raw ManifestValidationError."""
+        core, _, _, _, _ = build_core()
+
+        with pytest.raises(InvalidManifestError) as caught:
+            core.handle(TEXT, "malformed")
+
+        # The loader's own diagnosis is preserved, not swallowed.
+        assert isinstance(caught.value.__cause__, ManifestValidationError)
+        assert "skill_pack" in str(caught.value)
+
+    @pytest.mark.parametrize(
+        "sector",
+        ["../paused", "..", "sub/clinic", "sub\\clinic", ""],
+    )
+    def test_sector_names_cannot_escape_the_manifest_directory(self, sector):
+        core, _, _, _, _ = build_core()
+
+        with pytest.raises(UnknownSectorError):
+            core.handle(TEXT, sector)
+
+    def test_a_traversing_sector_name_is_rejected_even_when_it_would_resolve(
+        self, tmp_path
+    ):
+        """The guard rejects by name, before any file is looked at."""
+        nested = tmp_path / "nested"
+        nested.mkdir()
+        (tmp_path / f"{SECTOR}.yaml").write_bytes(
+            (SECTOR_FIXTURES / f"{SECTOR}.yaml").read_bytes()
+        )
+        core, _, _, _, _ = build_core(sector_dir=nested)
+
+        with pytest.raises(UnknownSectorError):
+            core.handle(TEXT, f"../{SECTOR}")
+
     def test_all_configuration_errors_share_a_base_class(self):
-        for error in (UnknownSectorError, SectorDisabledError, UnknownSkillPackError):
+        for error in (
+            UnknownSectorError,
+            InvalidManifestError,
+            SectorDisabledError,
+            UnknownSkillPackError,
+        ):
             assert issubclass(error, OrchestrationError)
 
     def test_configuration_failure_persists_and_audits_nothing(self):
@@ -374,17 +473,31 @@ class TestConfigurationFailures:
 class TestSkillPackResolution:
     """The manifest's identifier string, and only it, selects the pack."""
 
-    def test_any_mapping_works_and_the_manifest_string_is_the_key(self):
-        used = []
+    def test_a_lazy_mapping_is_asked_once_for_the_manifests_identifier(self):
+        """A Mapping that builds packs on demand must not build twice.
 
-        class RecordingMapping(dict):
+        Uses a real `collections.abc.Mapping`, whose `__contains__` is
+        implemented via `__getitem__` -- so a contains-check-then-subscript
+        resolver would show up here as two constructions.
+        """
+        requested = []
+
+        class LazyPacks(Mapping):
             def __getitem__(self, key):
-                used.append(key)
-                return super().__getitem__(key)
+                requested.append(key)
+                if key != PACK_ID:
+                    raise KeyError(key)
+                return ClinicSkillPack()
+
+            def __iter__(self):
+                return iter([PACK_ID])
+
+            def __len__(self):
+                return 1
 
         core = SchedulingAgentCore(
             manifest_dir=SECTOR_FIXTURES,
-            skill_packs=RecordingMapping({PACK_ID: ClinicSkillPack()}),
+            skill_packs=LazyPacks(),
             intake=FakeIntake(VALID_FIELDS),
             gate=FakeGate(),
             store=FakeStore(),
@@ -393,7 +506,30 @@ class TestSkillPackResolution:
 
         core.handle(TEXT, SECTOR)
 
-        assert used == [PACK_ID]
+        assert requested == [PACK_ID]
+
+    def test_a_lazy_mapping_that_has_no_entry_raises_unknown_skill_pack(self):
+        class EmptyPacks(Mapping):
+            def __getitem__(self, key):
+                raise KeyError(key)
+
+            def __iter__(self):
+                return iter([])
+
+            def __len__(self):
+                return 0
+
+        core = SchedulingAgentCore(
+            manifest_dir=SECTOR_FIXTURES,
+            skill_packs=EmptyPacks(),
+            intake=FakeIntake(VALID_FIELDS),
+            gate=FakeGate(),
+            store=FakeStore(),
+            audit=FakeAudit(),
+        )
+
+        with pytest.raises(UnknownSkillPackError):
+            core.handle(TEXT, SECTOR)
 
     def test_a_pack_the_core_has_never_heard_of_still_works(self):
         """Any SkillPack under any identifier -- no registry, no import."""
@@ -459,7 +595,7 @@ class TestRuleContext:
     def test_is_frozen(self):
         rules = RuleContext(violations=("nope",))
 
-        with pytest.raises(Exception):
+        with pytest.raises(FrozenInstanceError):
             rules.violations = ()
 
 

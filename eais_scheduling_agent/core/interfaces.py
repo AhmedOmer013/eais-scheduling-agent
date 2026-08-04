@@ -105,6 +105,13 @@ class IntakeService(ABC):
             values were extracted. Which field names those are is decided
             between intake and the sector's skill pack; the core only
             compares them against the pack's `required_fields`.
+
+            **Omit keys you could not extract; do not emit `None`
+            placeholders.** The core's missing-field check tests for key
+            *presence* only, so a `None` placeholder reads as "extracted
+            successfully" and is handed to the skill pack, which will
+            judge it on its value (or fail on it) instead of the request
+            being flagged as incomplete.
         """
         raise NotImplementedError
 

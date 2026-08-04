@@ -36,7 +36,10 @@ from eais_scheduling_agent.core.interfaces import (
     RuleContext,
 )
 from eais_scheduling_agent.core.models import AuditRecord, BookingRequest, Decision
-from eais_scheduling_agent.manifests.manifest import SectorManifest
+from eais_scheduling_agent.manifests.manifest import (
+    ManifestValidationError,
+    SectorManifest,
+)
 from eais_scheduling_agent.skillpacks.base import SkillPack, SlotInfo
 
 #: Manifest file extensions the core will look for, in priority order.
@@ -77,7 +80,20 @@ class OrchestrationError(Exception):
 
 
 class UnknownSectorError(OrchestrationError):
-    """No manifest file exists for the requested sector."""
+    """No manifest file exists for the requested sector.
+
+    Also raised when the sector name could not be used to look one up at
+    all -- see `SchedulingAgentCore._load_manifest`.
+    """
+
+
+class InvalidManifestError(OrchestrationError):
+    """The sector's manifest file exists but failed validation.
+
+    Wraps `manifests.manifest.ManifestValidationError` so that every way a
+    sector can be unusable is reachable through one `except
+    OrchestrationError` clause.
+    """
 
 
 class SectorDisabledError(OrchestrationError):
@@ -150,11 +166,26 @@ class SchedulingAgentCore:
             The `Decision` produced by the approval gate.
 
         Raises:
-            UnknownSectorError: No manifest file for `sector`.
+            UnknownSectorError: No manifest file for `sector`, or `sector`
+                is not usable as a manifest file name.
+            InvalidManifestError: The manifest file exists but failed
+                validation.
             SectorDisabledError: The sector's manifest declares
                 `enabled: false`.
             UnknownSkillPackError: The manifest's `skill_pack` string is
                 absent from the injected mapping.
+
+        All four are `OrchestrationError` subclasses, so a caller can
+        catch that one type to cover every configuration fault. Anything
+        else that escapes comes from a collaborator or a skill pack
+        failing its own contract, and is deliberately not translated --
+        the core cannot say anything truthful about what went wrong
+        inside someone else's implementation.
+
+        Audit guarantee: exactly one record is written for every request
+        that reaches a decision, including when persisting it afterwards
+        fails. A failure *before* the gate returns leaves no record,
+        because there is no decision to record.
         """
         # 1. Manifest for this sector, and the enabled check.
         manifest = self._load_manifest(sector)
@@ -189,11 +220,19 @@ class SchedulingAgentCore:
         #    compute. Both are skipped when the request already failed the
         #    checks above, for the same precondition reason: `slot_rules`
         #    is only meaningful for a request its pack accepts.
+        #
+        #    `conflict_checked` is recorded here, at the point the check
+        #    is actually run or skipped, rather than being inferred later
+        #    from `slot is not None`: step 7 may compute a slot after the
+        #    fact, and inferring from it there would make the audit record
+        #    claim a conflict check that never happened.
         slot: Optional[SlotInfo] = None
         conflict = False
+        conflict_checked = False
         if not missing_fields and not violations:
             slot = skill_pack.slot_rules(request)
             conflict = self._store.check_conflict(request, slot)
+            conflict_checked = True
 
         # 6. The gate, and only the gate, decides.
         rules = RuleContext(
@@ -203,28 +242,39 @@ class SchedulingAgentCore:
         )
         decision = self._gate.evaluate(request, rules, conflict)
 
-        # 7. Persist confirmed bookings only.
-        if decision.status == _CONFIRMED:
-            if slot is None:
-                # The gate confirmed a request whose rules did not pass,
-                # so no footprint was computed above. Compute it now
-                # rather than persisting an incomplete booking; if the
-                # pack refuses, that error is the honest outcome.
-                slot = skill_pack.slot_rules(request)
-            self._store.persist(request, slot)
-
-        # 8. Exactly one audit record per handled request, either way.
-        self._audit.append(
-            self._build_audit_record(
-                request=request,
-                manifest=manifest,
-                decision=decision,
-                missing_fields=missing_fields,
-                violations=violations,
-                slot_evaluated=slot is not None,
-                conflict=conflict,
+        # 7. Persist confirmed bookings only, and 8. record the outcome
+        #    exactly once per handled request, on every path.
+        #
+        #    The audit append sits in a `finally` because both statements
+        #    inside the `try` can raise: `slot_rules` refuses a request
+        #    its own pack rejected, and a real store can fail to write.
+        #    Losing the audit record precisely when something went wrong
+        #    is the worst time to lose it, so the record is written and
+        #    the exception is then allowed to propagate. The record
+        #    describes what was *decided* (which is settled by this
+        #    point); it does not claim the booking was stored.
+        try:
+            if decision.status == _CONFIRMED:
+                if slot is None:
+                    # The gate confirmed a request whose rules did not
+                    # pass, so no footprint was computed above. Compute
+                    # one now rather than persisting a booking with no
+                    # footprint the store could later compare against; if
+                    # the pack refuses, that error is the honest outcome.
+                    slot = skill_pack.slot_rules(request)
+                self._store.persist(request, slot)
+        finally:
+            self._audit.append(
+                self._build_audit_record(
+                    request=request,
+                    manifest=manifest,
+                    decision=decision,
+                    missing_fields=missing_fields,
+                    violations=violations,
+                    conflict_checked=conflict_checked,
+                    conflict=conflict,
+                )
             )
-        )
 
         # 9. Hand the decision back untouched.
         return decision
@@ -232,11 +282,42 @@ class SchedulingAgentCore:
     # -- helpers ---------------------------------------------------------
 
     def _load_manifest(self, sector: str) -> SectorManifest:
-        """Find and load `<manifest_dir>/<sector>.<supported suffix>`."""
+        """Find and load `<manifest_dir>/<sector>.<supported suffix>`.
+
+        `sector` becomes part of a filesystem path, and it will eventually
+        arrive from a CLI argument or an HTTP parameter, so it is checked
+        first: it has to be usable as a bare filename. Anything with a
+        path separator, a parent-directory hop, or a drive prefix is
+        rejected before it can walk out of `manifest_dir`.
+        """
+        unusable_as_filename = (
+            not sector
+            or sector != Path(sector).name
+            or "/" in sector
+            or "\\" in sector
+        )
+        if unusable_as_filename:
+            raise UnknownSectorError(
+                f"sector {sector!r} is not a usable manifest name: a sector "
+                f"must be a plain file name, without path separators or "
+                f"parent-directory references"
+            )
+
         for suffix in _MANIFEST_SUFFIXES:
             candidate = self._manifest_dir / f"{sector}{suffix}"
             if candidate.is_file():
-                return SectorManifest.load(str(candidate))
+                try:
+                    return SectorManifest.load(str(candidate))
+                except ManifestValidationError as exc:
+                    # Re-raised as an OrchestrationError so a caller can
+                    # catch every "this sector is not usable" failure with
+                    # one except clause. A manifest typo is the most
+                    # likely deployment fault in the system; it should not
+                    # be the one that escapes as a raw traceback.
+                    raise InvalidManifestError(
+                        f"manifest for sector {sector!r} at {candidate} is "
+                        f"invalid: {exc}"
+                    ) from exc
         raise UnknownSectorError(
             f"no manifest for sector {sector!r} in {self._manifest_dir}: "
             f"expected one of "
@@ -244,19 +325,31 @@ class SchedulingAgentCore:
         )
 
     def _resolve_skill_pack(self, identifier: str) -> SkillPack:
-        """Look the manifest's skill-pack identifier up in the injected map."""
-        if identifier not in self._skill_packs:
+        """Look the manifest's skill-pack identifier up in the injected map.
+
+        A single subscript, deliberately: a `Mapping` implementation that
+        builds packs on demand in `__getitem__` would do that work twice
+        if this asked `in` first and then subscripted.
+        """
+        try:
+            return self._skill_packs[identifier]
+        except KeyError as exc:
             raise UnknownSkillPackError(
                 f"manifest requires skill pack {identifier!r}, which was not "
                 f"supplied to SchedulingAgentCore"
-            )
-        return self._skill_packs[identifier]
+            ) from exc
 
     @staticmethod
     def _missing_fields(
         skill_pack: SkillPack, request: BookingRequest
     ) -> Tuple[str, ...]:
         """Names the pack declared required that the request does not carry.
+
+        Key presence only: a key present with a `None` value counts as
+        supplied, and is left for the skill pack to judge on its value.
+        Intake is contractually required not to emit such placeholders
+        (see `IntakeService.parse`); second-guessing what an absent-ish
+        value means would be the core deciding a sector question.
 
         Order follows the pack's own `required_fields` declaration, so the
         result -- and therefore the audit record built from it -- is
@@ -273,7 +366,7 @@ class SchedulingAgentCore:
         decision: Decision,
         missing_fields: Sequence[str],
         violations: Sequence[str],
-        slot_evaluated: bool,
+        conflict_checked: bool,
         conflict: bool,
     ) -> AuditRecord:
         """Assemble the single record describing how this request was handled.
@@ -298,7 +391,7 @@ class SchedulingAgentCore:
             "conflict_check: "
             + (
                 "skipped (rules not satisfied)"
-                if not slot_evaluated
+                if not conflict_checked
                 else "conflict"
                 if conflict
                 else "none"
