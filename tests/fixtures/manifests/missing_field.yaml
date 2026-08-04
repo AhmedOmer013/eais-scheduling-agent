@@ -1,0 +1,4 @@
+sector: clinic
+enabled: true
+approval_required_for:
+  - outside_working_hours

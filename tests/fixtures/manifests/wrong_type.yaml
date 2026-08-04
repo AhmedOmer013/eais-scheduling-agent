@@ -1,0 +1,5 @@
+sector: clinic
+enabled: "yes"
+skill_pack: clinic_v1
+approval_required_for:
+  - outside_working_hours
