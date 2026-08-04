@@ -23,7 +23,12 @@ Usage:
     eais-book <sector> <text> [--llm] [--audit-file PATH] [--manifest-dir DIR]
 
 Example:
-    eais-book clinic "Dr. Salem today at 10am, patient John Doe"
+    eais-book clinic "Dr. A today at 10am, patient John Doe"
+
+("Dr. A" and "Dr. B" are the bundled `ClinicSkillPack` defaults --
+see `skillpacks/clinic/pack.py`'s `_DEFAULT_PRACTITIONERS` -- so this
+example reaches CONFIRMED out of the box. Any other practitioner name
+is a valid, non-crashing PENDING_APPROVAL, not an error.)
 """
 
 import argparse
@@ -131,7 +136,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "text",
         help=(
-            'Free-text booking request, e.g. "Dr. Salem today at 10am, '
+            'Free-text booking request, e.g. "Dr. A today at 10am, '
             'patient John Doe".'
         ),
     )
