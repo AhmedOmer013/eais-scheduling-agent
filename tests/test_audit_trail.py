@@ -242,6 +242,37 @@ class TestAuditTrailIntentWithDatetime:
         parsed = json.loads((tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip())
         assert parsed["intent"]["details"]["start_time"] == "2026-08-11T20:00:00+00:00"
 
+    def test_datetime_inside_a_list_is_also_converted(self, tmp_path):
+        """Exercises the (list, tuple) recursion branch specifically --
+        not hit by the flat or nested-dict cases above. Models a
+        hypothetical multi-slot field; no current skill pack produces
+        this shape, but the recursion should still be correct if one
+        ever does."""
+        record = AuditRecord(
+            input="text",
+            skill_pack="clinic_v1",
+            intent={
+                "practitioner": "Dr. Salem",
+                "candidate_slots": [
+                    datetime(2026, 8, 11, 9, 0, tzinfo=timezone.utc),
+                    datetime(2026, 8, 11, 9, 30, tzinfo=timezone.utc),
+                ],
+            },
+            rules_evaluated=["required_fields: ok", "skill_pack_validation: ok", "conflict_check: none"],
+            decision="CONFIRMED",
+            approval_status="not_required",
+            timestamp=datetime(2026, 8, 5, 9, 0, 0, tzinfo=timezone.utc),
+        )
+        trail = JsonLinesAuditTrail(tmp_path / "audit.jsonl")
+
+        trail.append(record)
+
+        parsed = json.loads((tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip())
+        assert parsed["intent"]["candidate_slots"] == [
+            "2026-08-11T09:00:00+00:00",
+            "2026-08-11T09:30:00+00:00",
+        ]
+
 
 class TestAuditTrailAppendMode:
     """Test that multiple instances append without truncation."""
