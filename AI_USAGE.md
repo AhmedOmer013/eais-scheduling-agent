@@ -53,8 +53,11 @@ all pull requests were under their GitHub account.
 Stage A docs and the CI workflow) using this machine's pre-existing local
 git config, which was set to an unrelated name/email
 (`hima890 <hfibrahim90@gmail.com>`) left over from the machine's prior
-state — not the project owner's identity. Two commits landed under the
-wrong author before this was noticed.
+state — not the project owner's identity. Those two direct commits, plus
+four more made by subagents (T1's scaffold, T2's data model) before the
+identity was corrected, landed under the wrong author before this was
+noticed — six commits in total, visible in `git log --all` on the stale,
+now-superseded feature branches this history rewrite replaced.
 
 **Why it happened:** The AI did not check the local git identity before
 committing; it assumed the ambient environment was already configured

@@ -20,17 +20,17 @@ intake mode. Full test suite: 235+ tests, CI-green on Python 3.11/3.12.
 ## How to run it
 
 `pip install -e .`, then e.g.:
-`eais-book clinic "Dr. Salem today at 10am, patient John Doe"`
+`eais-book clinic "Dr. A today at 10am, patient John Doe"`
 
 See `README.md` for the full install/run/test walkthrough.
 
 ## Known gaps
 
-- `diagrams/UML_Diagrams.docx` and `diagrams/class-diagram.png` were kept
-  in sync for signature changes (T6) but two later-introduced types
-  (`SlotInfo`'s widened fields, `RuleContext`) were never added as
-  classes to the diagrams themselves — a diagram-completeness gap, not a
-  code/diagram signature mismatch.
+- `diagrams/class-diagram.mmd`/`.png` now include `SlotInfo` and
+  `RuleContext` as classes (closed in T15). `diagrams/UML_Diagrams.docx`
+  was not regenerated to match — it still reflects the pre-T15 diagram
+  set. Regenerating it needs to embed the updated renders, not just swap
+  two images; left as the one remaining documented gap.
 - `RestaurantSkillPack` assigns tables deterministically (smallest
   fitting table) without live-availability visibility, since the
   interface calls `slot_rules()` before `check_conflict()`. Documented in
