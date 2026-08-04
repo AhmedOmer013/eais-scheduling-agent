@@ -32,6 +32,17 @@ classDiagram
         +slot_rules(request) SlotInfo
         +confirmation_template() str
     }
+    class SlotInfo {
+        +int duration_minutes
+        +int capacity
+        +str resource_key
+        +datetime start
+    }
+    class RuleContext {
+        +tuple missing_fields
+        +tuple violations
+        +tuple approval_required_for
+    }
     class ClinicSkillPack {
         fixed slot length per practitioner
     }
@@ -82,3 +93,7 @@ classDiagram
     SchedulingAgentCore ..> Decision
     ApprovalGate ..> Decision
     AuditTrail --> AuditRecord
+    SkillPack ..> SlotInfo
+    BookingStore ..> SlotInfo
+    SchedulingAgentCore ..> RuleContext
+    ApprovalGate ..> RuleContext
