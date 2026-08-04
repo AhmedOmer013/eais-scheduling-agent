@@ -22,7 +22,7 @@ classDiagram
         +bool enabled
         +str skill_pack
         +list approval_required_for
-        +load(sector) SectorManifest
+        +load(path) SectorManifest
     }
     class SkillPack {
         <<abstract>>
@@ -40,20 +40,20 @@ classDiagram
     }
     class IntakeService {
         <<interface>>
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class LLMIntake {
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class OfflineIntake {
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class ApprovalGate {
         +evaluate(request, rules, conflict) Decision
     }
     class BookingStore {
-        +check_conflict(request) bool
-        +persist(request)
+        +check_conflict(request, slot) bool
+        +persist(request, slot)
     }
     class AuditTrail {
         +append(record) void

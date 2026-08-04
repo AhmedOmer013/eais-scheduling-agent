@@ -76,16 +76,16 @@ sequenceDiagram
         Intake->>Intake: deterministic rule/regex parse
     end
     Intake-->>Core: BookingRequest{sector, fields}
-    Core->>Manifest: load(sector)
+    Core->>Manifest: load(path)  %% path resolved from sector by filename convention
     Manifest-->>Core: enabled, skill_pack ref, approval_required_for
     Core->>SP: get rules()
     SP-->>Core: required_fields, working_hours, slot_rules, template
-    Core->>Store: check_conflict(request)
+    Core->>Store: check_conflict(request, slot)
     Store-->>Core: conflict: true/false
     Core->>Gate: evaluate(request, rules, conflict)
     alt within rules, no conflict
         Gate-->>Core: CONFIRMED
-        Core->>Store: persist(booking)
+        Core->>Store: persist(request, slot)
     else violates a rule or conflicts
         Gate-->>Core: PENDING_APPROVAL(reason)
     end
@@ -135,7 +135,7 @@ classDiagram
         +bool enabled
         +str skill_pack
         +list approval_required_for
-        +load(sector) SectorManifest
+        +load(path) SectorManifest
     }
     class SkillPack {
         <<abstract>>
@@ -153,20 +153,20 @@ classDiagram
     }
     class IntakeService {
         <<interface>>
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class LLMIntake {
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class OfflineIntake {
-        +parse(text) BookingRequest
+        +parse(text, sector) BookingRequest
     }
     class ApprovalGate {
         +evaluate(request, rules, conflict) Decision
     }
     class BookingStore {
-        +check_conflict(request) bool
-        +persist(request)
+        +check_conflict(request, slot) bool
+        +persist(request, slot)
     }
     class AuditTrail {
         +append(record) void
