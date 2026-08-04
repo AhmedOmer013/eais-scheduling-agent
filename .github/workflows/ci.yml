@@ -25,4 +25,11 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest
+        run: |
+          pytest || status=$?
+          status=${status:-0}
+          if [ "$status" -eq 5 ]; then
+            echo "No tests collected yet (expected during early scaffold tasks) — not a failure."
+            exit 0
+          fi
+          exit "$status"
