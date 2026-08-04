@@ -10,6 +10,7 @@ This module is pure interface: no sector-specific logic lives here.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Dict, List
 
 from eais_scheduling_agent.core.models import BookingRequest
@@ -38,11 +39,16 @@ class SlotInfo:
     placeholder or a lie, it is the literal capacity of a clinic slot.
     A restaurant pack computes both fields from party size / table rules.
 
-    Deliberately excluded: anything sector-specific like a table id,
-    practitioner id, or start/end timestamps. Those belong in the
-    concrete skill packs (or in `BookingRequest.fields`), not in the
-    shared interface type -- adding them here would be speculative, since
-    neither T5 nor T10 has a known need for them yet.
+    `resource_key` and `start` (added in T9, see that task's brief) exist
+    for `core.store.BookingStore`: same-run conflict detection needs to
+    know *which* resource a booking occupies and *when* it starts, and
+    T4's original docstring here excluded timestamps/resource ids only
+    because neither T5 nor T10 had a known need for them yet. T9 is that
+    need materializing -- `BookingStore` treats both fields as opaque
+    (`resource_key` is never parsed, `start` is only ever compared,
+    combined with `duration_minutes`, against other slots' intervals),
+    which is what keeps the store itself sector-agnostic while still
+    letting a sector-aware skill pack supply the values it already knows.
 
     Attributes:
         duration_minutes: How long the booking occupies its resource, in
@@ -52,10 +58,21 @@ class SlotInfo:
             Always 1 for a clinic slot (one practitioner, one patient).
             The party size (or the table size needed to seat it) for a
             restaurant slot.
+        resource_key: Opaque string identifying which resource this
+            booking occupies (e.g. a specific practitioner or table).
+            Computed by the sector-aware skill pack; consumers such as
+            `BookingStore` compare it for equality only and never
+            interpret its contents.
+        start: When the booking's resource-occupation begins. Combined
+            with `duration_minutes`, this gives the
+            `[start, start + duration_minutes)` interval a conflict
+            checker needs.
     """
 
     duration_minutes: int
     capacity: int
+    resource_key: str
+    start: datetime
 
 
 class SkillPack(ABC):
