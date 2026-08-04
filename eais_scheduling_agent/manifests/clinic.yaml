@@ -1,0 +1,8 @@
+sector: clinic
+enabled: true
+skill_pack: clinic_v1
+approval_required_for:
+  - outside_working_hours
+  - unknown_practitioner
+  - double_booking
+  - missing_required_field

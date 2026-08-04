@@ -29,8 +29,11 @@ dev = [
     "pytest-cov>=4.0",
 ]
 
+[project.scripts]
+eais-book = "eais_scheduling_agent.cli:main"
+
 [tool.setuptools]
-packages = ["eais_scheduling_agent", "eais_scheduling_agent.core", "eais_scheduling_agent.manifests", "eais_scheduling_agent.skillpacks", "eais_scheduling_agent.intake"]
+packages = ["eais_scheduling_agent", "eais_scheduling_agent.core", "eais_scheduling_agent.manifests", "eais_scheduling_agent.skillpacks", "eais_scheduling_agent.skillpacks.clinic", "eais_scheduling_agent.skillpacks.restaurant", "eais_scheduling_agent.intake"]
 
 [tool.setuptools.package-data]
 eais_scheduling_agent = ["manifests/**/*.yaml", "manifests/**/*.json"]
