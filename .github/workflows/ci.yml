@@ -26,8 +26,8 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest
-          status=$?
+          pytest || status=$?
+          status=${status:-0}
           if [ "$status" -eq 5 ]; then
             echo "No tests collected yet (expected during early scaffold tasks) — not a failure."
             exit 0
