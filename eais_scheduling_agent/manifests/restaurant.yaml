@@ -1,0 +1,7 @@
+sector: restaurant
+enabled: true
+skill_pack: restaurant_v1
+approval_required_for:
+  - outside_working_hours
+  - double_booking
+  - missing_required_field
