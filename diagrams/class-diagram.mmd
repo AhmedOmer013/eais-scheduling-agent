@@ -1,0 +1,99 @@
+classDiagram
+    class BookingRequest {
+        +str sector
+        +dict fields
+        +str raw_text
+    }
+    class Decision {
+        +str status
+        +str reason
+    }
+    class AuditRecord {
+        +str input
+        +str skill_pack
+        +dict intent
+        +list rules_evaluated
+        +str decision
+        +str approval_status
+        +datetime timestamp
+    }
+    class SectorManifest {
+        +str sector
+        +bool enabled
+        +str skill_pack
+        +list approval_required_for
+        +load(path) SectorManifest
+    }
+    class SkillPack {
+        <<abstract>>
+        +list required_fields
+        +dict working_hours
+        +validate(request) list
+        +slot_rules(request) SlotInfo
+        +confirmation_template() str
+    }
+    class SlotInfo {
+        +int duration_minutes
+        +int capacity
+        +str resource_key
+        +datetime start
+    }
+    class RuleContext {
+        +tuple missing_fields
+        +tuple violations
+        +tuple approval_required_for
+    }
+    class ClinicSkillPack {
+        fixed slot length per practitioner
+    }
+    class RestaurantSkillPack {
+        capacity and party-size rules
+    }
+    class IntakeService {
+        <<interface>>
+        +parse(text, sector) BookingRequest
+    }
+    class LLMIntake {
+        +parse(text, sector) BookingRequest
+    }
+    class OfflineIntake {
+        +parse(text, sector) BookingRequest
+    }
+    class ApprovalGate {
+        +evaluate(request, rules, conflict) Decision
+    }
+    class BookingStore {
+        +check_conflict(request, slot) bool
+        +persist(request, slot)
+    }
+    class AuditTrail {
+        +append(record) void
+    }
+    class SchedulingAgentCore {
+        -IntakeService intake
+        -ApprovalGate gate
+        -BookingStore store
+        -AuditTrail audit
+        -Mapping~str, SkillPack~ skill_packs
+        -Path manifest_dir
+        +handle(text, sector) Decision
+    }
+
+    SkillPack <|-- ClinicSkillPack
+    SkillPack <|-- RestaurantSkillPack
+    IntakeService <|.. LLMIntake
+    IntakeService <|.. OfflineIntake
+    SchedulingAgentCore --> IntakeService
+    SchedulingAgentCore --> ApprovalGate
+    SchedulingAgentCore --> BookingStore
+    SchedulingAgentCore --> AuditTrail
+    SchedulingAgentCore --> SectorManifest
+    SchedulingAgentCore --> SkillPack
+    SchedulingAgentCore ..> BookingRequest
+    SchedulingAgentCore ..> Decision
+    ApprovalGate ..> Decision
+    AuditTrail --> AuditRecord
+    SkillPack ..> SlotInfo
+    BookingStore ..> SlotInfo
+    SchedulingAgentCore ..> RuleContext
+    ApprovalGate ..> RuleContext

@@ -1,0 +1,34 @@
+sequenceDiagram
+    actor Cust as Customer
+    participant Intake as Intake Service
+    participant Core as Scheduling Agent Core
+    participant Manifest as Sector Manifest
+    participant SP as Skill Pack
+    participant Gate as Approval Gate
+    participant Store as Booking Store
+    participant Audit as Audit Trail
+
+    Cust->>Core: handle(text, sector)
+    Core->>Manifest: load(path)
+    Manifest-->>Core: enabled, skill_pack ref, approval_required_for
+    Core->>Core: resolve sector's skill pack from injected mapping
+    Core->>Intake: parse(text, sector)
+    alt LLM mode
+        Intake->>Intake: call LLM, extract structured fields
+    else offline mode
+        Intake->>Intake: deterministic rule/regex parse
+    end
+    Intake-->>Core: BookingRequest{sector, fields}
+    Core->>SP: get rules()
+    SP-->>Core: required_fields, working_hours, slot_rules, template
+    Core->>Store: check_conflict(request, slot)
+    Store-->>Core: conflict: true/false
+    Core->>Gate: evaluate(request, rules, conflict)
+    alt within rules, no conflict
+        Gate-->>Core: CONFIRMED
+        Core->>Store: persist(request, slot)
+    else violates a rule or conflicts
+        Gate-->>Core: PENDING_APPROVAL(reason)
+    end
+    Core->>Audit: append(input, skill_pack, intent, rules_evaluated, decision, status)
+    Core-->>Cust: confirmation message or PENDING_APPROVAL + reason
