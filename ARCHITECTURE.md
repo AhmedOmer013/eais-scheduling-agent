@@ -2,7 +2,7 @@
 
 This is the document the implementation is held against — both by the R1-proof test (`PLAN.md` T11) and in the live interview's extension exercise. Every claim here about what a sector may/must-not touch should be true of the actual code at submission time.
 
-> For a deeper, three-level walkthrough (activity → sequence → class) that expands on the diagrams below, see [`diagrams/DIAGRAMS.md`](diagrams/DIAGRAMS.md) — also exported as [`diagrams/UML_Diagrams.docx`](diagrams/UML_Diagrams.docx). The class diagram there is the one the implementation is written against line-for-line.
+> For a deeper, three-level walkthrough (activity → sequence → class) that expands on the diagrams below, see [`diagrams/DIAGRAMS.md`](diagrams/DIAGRAMS.md). The class diagram there is the one the implementation is written against line-for-line.
 
 ## 1. Component diagram
 
