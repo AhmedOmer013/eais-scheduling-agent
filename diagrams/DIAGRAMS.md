@@ -147,6 +147,17 @@ classDiagram
         +slot_rules(request) SlotInfo
         +confirmation_template() str
     }
+    class SlotInfo {
+        +int duration_minutes
+        +int capacity
+        +str resource_key
+        +datetime start
+    }
+    class RuleContext {
+        +tuple missing_fields
+        +tuple violations
+        +tuple approval_required_for
+    }
     class ClinicSkillPack {
         fixed slot length per practitioner
     }
@@ -197,11 +208,17 @@ classDiagram
     SchedulingAgentCore ..> Decision
     ApprovalGate ..> Decision
     AuditTrail --> AuditRecord
+    SkillPack ..> SlotInfo
+    BookingStore ..> SlotInfo
+    SchedulingAgentCore ..> RuleContext
+    ApprovalGate ..> RuleContext
 ```
 
 **What this shows:** the two abstraction boundaries the whole design rests on:
 
 - **`SkillPack`** is abstract; `SchedulingAgentCore` depends only on that abstraction, never on `ClinicSkillPack` or `RestaurantSkillPack` by name. Adding a third sector means writing a third subclass — zero changes to `SchedulingAgentCore`. This is FR1 and the extension-point map in `ARCHITECTURE.md`, expressed as a class relationship rather than a rule.
 - **`IntakeService`** is an interface with two interchangeable implementations, `LLMIntake` and `OfflineIntake`. `SchedulingAgentCore` is written against the interface, so the deterministic-offline requirement (FR4) is satisfied by *swapping an implementation*, not by branching inside the core on "are we in test mode."
+
+**Added during implementation (not in the original design pass):** `SlotInfo` and `RuleContext` — two small data-carrier classes that emerged once T9 (conflict detection) and the approval gate needed a richer shape than the original contract anticipated (`SlotInfo` gained `resource_key` and `start` so the store could actually compare two bookings; `RuleContext` groups what the gate found — missing fields, rule violations, and which of those require approval — into one typed object instead of loose values). Both are `..>` dependencies, not new core responsibilities: they don't change who talks to whom, only what shape the existing arrows carry. See `PLAN.md` §7 for the fuller account of this design change.
 
 **Why it comes last:** this is the diagram the implementation is written against line-for-line, and the one the live interview's extension exercise will probe directly — "show me the third subclass, show me it required no core changes." The activity and sequence diagrams above are what make that class structure legible as a business process and a runtime behaviour, rather than an abstraction for its own sake.
