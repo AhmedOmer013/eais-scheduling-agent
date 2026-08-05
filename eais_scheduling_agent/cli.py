@@ -7,17 +7,13 @@ audit trail, and (by default) the deterministic offline intake -- and
 exposes it as the `eais-book` console command (see `[project.scripts]` in
 `pyproject.toml`).
 
-This is the one place in the project allowed to name sectors: every prior
-task (T6-T13) built one interchangeable piece behind `core.interfaces` /
-`skillpacks.base`, and none of them may import a concrete sector. This
-module is where "clinic" and "restaurant" are finally named and assembled
-into something runnable -- per T6's report: "T14 -- Wiring. This is the
-layer that is allowed to name sectors."
-
-Per T6's report, "the core deliberately does not render text" --
-`SchedulingAgentCore.handle()` returns a bare `Decision`, never a rendered
-message. Turning a CONFIRMED decision into a human-readable string via the
-matching skill pack's `confirmation_template()` is this module's job.
+Sector names are assembled in `wiring.py`, shared with `http_api.py`; this
+module consumes that wiring rather than defining it. Per T6's report, "the
+core deliberately does not render text" -- `SchedulingAgentCore.handle()`
+returns a bare `Decision`, never a rendered message. Turning a CONFIRMED
+decision into a human-readable string via the matching skill pack's
+`confirmation_template()` is an entry point's job, implemented here and in
+`http_api.py` identically via `wiring.render_confirmation()`.
 
 Usage:
     eais-book <sector> <text> [--llm] [--audit-file PATH] [--manifest-dir DIR]
@@ -33,87 +29,24 @@ is a valid, non-crashing PENDING_APPROVAL, not an error.)
 
 import argparse
 import sys
-from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence
 
+from eais_scheduling_agent import wiring
 from eais_scheduling_agent.core.audit import JsonLinesAuditTrail
 from eais_scheduling_agent.core.gate import StandardApprovalGate
 from eais_scheduling_agent.core.interfaces import IntakeService
-from eais_scheduling_agent.core.models import BookingRequest
 from eais_scheduling_agent.core.orchestrator import OrchestrationError, SchedulingAgentCore
 from eais_scheduling_agent.core.store import InMemoryBookingStore
 from eais_scheduling_agent.intake.llm import LLMIntake
 from eais_scheduling_agent.intake.offline import OfflineIntake
-from eais_scheduling_agent.manifests.manifest import ManifestValidationError, SectorManifest
 from eais_scheduling_agent.skillpacks.base import SkillPack
-from eais_scheduling_agent.skillpacks.clinic import ClinicSkillPack
-from eais_scheduling_agent.skillpacks.restaurant import RestaurantSkillPack
-
-#: Bundled production manifests directory -- one <sector>.yaml per sector,
-#: shipped as package data (see [tool.setuptools.package-data] in
-#: pyproject.toml). Resolved relative to this file so it works the same
-#: whether the package is installed editable (`pip install -e .`) or as a
-#: real wheel/sdist install.
-_DEFAULT_MANIFEST_DIR = Path(__file__).resolve().parent / "manifests"
 
 #: Matches the .gitignore entry for the default audit file, so a default
 #: run doesn't need an extra flag to avoid polluting the repo.
 _DEFAULT_AUDIT_FILE = "audit.jsonl"
 
-#: Manifest file suffixes to try, in the same priority order
-#: `SchedulingAgentCore._load_manifest` uses internally. Duplicated here
-#: only for the render-time manifest re-read in `_load_manifest_for_render`
-#: below -- never for the orchestration decision itself, which the core
-#: alone makes.
-_MANIFEST_SUFFIXES = (".yaml", ".yml", ".json")
-
 _CONFIRMED = "CONFIRMED"
 _PENDING_APPROVAL = "PENDING_APPROVAL"
-
-
-def _skill_packs() -> Dict[str, SkillPack]:
-    """Build the `skill_pack` identifier -> instance mapping this CLI knows.
-
-    The only place in the project that maps a manifest's opaque
-    `skill_pack` string to a concrete class -- see this module's docstring.
-    """
-    return {
-        "clinic_v1": ClinicSkillPack(),
-        "restaurant_v1": RestaurantSkillPack(),
-    }
-
-
-class _CachingIntake(IntakeService):
-    """Wraps a real `IntakeService`, memoizing by the exact `(text, sector)` pair.
-
-    `SchedulingAgentCore.handle()` returns only a `Decision` -- never the
-    `BookingRequest` it built internally (see
-    `core.orchestrator.SchedulingAgentCore.handle`'s return type). But
-    rendering a CONFIRMED booking's `confirmation_template()` needs exactly
-    that request's `fields`. Re-deriving them by calling `intake.parse()` a
-    second, independent time would cost a second LLM round-trip under
-    `--llm`, and -- if the model's sampling is not perfectly stable --
-    could theoretically return *different* fields than the ones the core
-    actually validated and persisted, which would make the printed
-    confirmation lie about what was actually booked.
-
-    Instead, this wrapper caches the first call for a given `(text,
-    sector)` pair and returns the same `BookingRequest` object on every
-    later call with the same arguments. `main()` calls `parse()` once
-    itself, after `handle()` returns CONFIRMED, passing the identical
-    `text`/`sector` that `handle()` already used internally -- so it gets
-    the cached result back without parsing (or calling an LLM) again.
-    """
-
-    def __init__(self, inner: IntakeService) -> None:
-        self._inner = inner
-        self._cache: Dict[Tuple[str, str], BookingRequest] = {}
-
-    def parse(self, text: str, sector: str) -> BookingRequest:
-        key = (text, sector)
-        if key not in self._cache:
-            self._cache[key] = self._inner.parse(text, sector)
-        return self._cache[key]
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -162,7 +95,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--manifest-dir",
-        default=str(_DEFAULT_MANIFEST_DIR),
+        default=str(wiring.DEFAULT_MANIFEST_DIR),
         metavar="DIR",
         help=(
             "Directory holding one '<sector>.yaml' manifest per sector "
@@ -170,28 +103,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
-
-
-def _load_manifest_for_render(manifest_dir: str, sector: str) -> SectorManifest:
-    """Re-read the sector's manifest, purely to learn its `skill_pack` id.
-
-    Only called after `core.handle()` has already succeeded for the same
-    `sector`, so the manifest is known to exist and be valid at this point
-    -- this never has to handle the error cases `SchedulingAgentCore`
-    itself already handled internally (see `OrchestrationError` and its
-    subclasses in `core.orchestrator`). A second, cheap, read-only file
-    read -- not a duplicate of any decision-making, which stays entirely
-    the core's.
-    """
-    base = Path(manifest_dir)
-    for suffix in _MANIFEST_SUFFIXES:
-        candidate = base / f"{sector}{suffix}"
-        if candidate.is_file():
-            return SectorManifest.load(str(candidate))
-    raise ManifestValidationError(
-        f"manifest for sector {sector!r} unexpectedly missing from "
-        f"{manifest_dir} after a successful booking decision"
-    )
 
 
 def _render_confirmation(
@@ -203,13 +114,13 @@ def _render_confirmation(
 
     Per this module's docstring: the core never renders text, so this is
     the CLI's own job. `intake.parse` here is a cache hit (see
-    `_CachingIntake`) against the exact call `SchedulingAgentCore.handle`
+    `wiring.CachingIntake`) against the exact call `SchedulingAgentCore.handle`
     already made, so this does not re-run the LLM or the regex parser.
     """
-    manifest = _load_manifest_for_render(args.manifest_dir, args.sector)
+    manifest = wiring.load_manifest_for_render(args.manifest_dir, args.sector)
     skill_pack = skill_packs[manifest.skill_pack]
     request = intake.parse(args.text, args.sector)
-    return skill_pack.confirmation_template().format(**request.fields)
+    return wiring.render_confirmation(skill_pack, request)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -227,8 +138,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     offline = OfflineIntake()
     real_intake: IntakeService = LLMIntake(fallback=offline) if args.llm else offline
-    intake: IntakeService = _CachingIntake(real_intake)
-    skill_packs = _skill_packs()
+    intake: IntakeService = wiring.CachingIntake(real_intake)
+    skill_packs = wiring.build_skill_packs()
 
     core = SchedulingAgentCore(
         manifest_dir=args.manifest_dir,
