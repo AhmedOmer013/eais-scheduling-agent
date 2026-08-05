@@ -4,25 +4,29 @@
 
 A multi-sector appointment-booking agent (clinic + restaurant) built
 around one sector-agnostic core (`SchedulingAgentCore`), proven by two
-independently-verified properties: **FR1** — the core contains zero
-sector-named identifiers (grep- and import-graph-checked, `tests/
-test_r1_proof.py`) — and **AC5** — adding the restaurant sector touched
-only a manifest file and a new skill-pack package, zero diffs to `core/`
-(verified twice, independently, before merge).
+verified properties: **FR1** — the core has zero sector-named
+identifiers (checked by `tests/test_r1_proof.py`) — and **AC5** — adding
+the restaurant sector touched only a manifest and a skill-pack package,
+zero diffs to `core/`.
 
 ## Current state
 
 All 15 `PLAN.md` tasks are complete and merged to `develop` via reviewed
 PRs. Both sectors run end-to-end through the `eais-book` CLI, in either
 deterministic-offline or LLM-backed (Ollama, with automatic fallback)
-intake mode. Full test suite: 235+ tests, CI-green on Python 3.11/3.12.
+intake mode. An optional HTTP interface (`eais-book-server`) was added
+afterward — same core, same rules, over HTTP instead of a command line.
+It keeps one shared store for its run, so it can catch a conflict across
+two separate requests, unlike two separate CLI calls. 271 tests passing,
+CI-green on Python 3.11/3.12.
 
 ## How to run it
 
 `pip install -e .`, then e.g.:
 `eais-book clinic "Dr. A today at 10am, patient John Doe"`
 
-See `README.md` for the full install/run/test walkthrough.
+HTTP interface: `pip install -e ".[http]"`, then `eais-book-server`. Full
+walkthrough for both in `README.md`.
 
 ## Known gaps
 
@@ -33,6 +37,9 @@ See `README.md` for the full install/run/test walkthrough.
 - No local LLM runtime is installed in this environment; `LLMIntake`'s
   Ollama-calling code path is untested against a real model (its
   fallback and parsing logic are fully tested against injected fakes).
+- The HTTP dev server has no concurrency hardening — two simultaneous
+  requests for the same slot may not serialize correctly. Out of scope
+  to fix for this prototype.
 
 ## AI-assisted development
 
