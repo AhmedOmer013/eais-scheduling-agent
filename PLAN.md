@@ -1,8 +1,8 @@
 # PLAN.md — Implementation Plan
 
-Committed before any feature code, per the brief's plan-first rule. Requirements referenced below (`FRx`, `NFR-*`, `ACx`) are the ones defined in `docs/document-pack/SRS.docx` (D1) — that document, not the raw brief, is the authoritative requirements source this plan is built against. See `RESEARCH.md` for the technology survey and `ARCHITECTURE.md` for the component/sequence/data-contract detail this plan builds toward.
+Committed before any feature code, per the brief's plan-first rule. Requirements referenced below (`FRx`, `NFR-*`, `ACx`) are the ones defined in `SRS.docx` (D1, part of the D1-D3 document pack — kept locally, not committed to this repo) — that document, not the raw brief, is the authoritative requirements source this plan is built against. See `RESEARCH.md` for the technology survey and `ARCHITECTURE.md` for the component/sequence/data-contract detail this plan builds toward.
 
-Before starting T1, read [`diagrams/DIAGRAMS.md`](diagrams/DIAGRAMS.md) — it walks activity → sequence → class and the class diagram there is what T2-T13 are implemented against directly.
+Before starting T1, read `diagrams/DIAGRAMS.md` (kept locally, not committed to this repo) — it walks activity → sequence → class and the class diagram there is what T2-T13 are implemented against directly.
 
 ## 1. Task breakdown
 
@@ -66,8 +66,8 @@ Directly the SRS acceptance criteria, plus the process requirements from the bri
 - **AC6** — README alone → running system + passing tests, clean machine, under 5 minutes.
 - **AC7** — offline intake output is identical for identical input across repeated runs.
 - Git history shows Stage A docs committed before any implementation commit, with incremental, meaningfully-messaged commits after (no squashed "initial commit").
-- All required docs (`RESEARCH.md`, `PLAN.md`, `ARCHITECTURE.md`, `README.md`, `DESIGN.md`, `AI_USAGE.md`, `HANDOVER.md`, `SRS.docx`) exist and are accurate as of the submission commit.
-- `diagrams/class-diagram.mmd` still matches the actual class names/relationships in the code — if a class gets renamed or restructured during T2-T13, the diagram (and its `.docx` export) gets updated in the same commit, not left stale.
+- All required docs (`RESEARCH.md`, `PLAN.md`, `ARCHITECTURE.md`, `README.md`, `DESIGN.md`, `AI_USAGE.md`, `HANDOVER.md`, and the D1-D3 pack incl. `SRS.docx`, kept locally) exist and are accurate as of the submission commit.
+- `diagrams/class-diagram.mmd` (kept locally) still matches the actual class names/relationships in the code — if a class gets renamed or restructured during T2-T13, the diagram (and its `.docx` export) gets updated in the same commit, not left stale.
 - Any gap that remains is documented explicitly (what's missing, why, how it'd be finished) rather than left silent.
 
 ## 6. What gets cut first if time runs short
@@ -84,4 +84,4 @@ The design changed on contact with the code once, concretely: `SlotInfo` needed 
 
 Two real bugs were caught by review rather than by original test-writing: a `JsonLinesAuditTrail` crash serializing a `datetime` nested inside a list (fixed, with a regression test added specifically for that recursion branch), and a diagram/implementation drift after T6 that required a dedicated sync pass. Neither reached `develop` unfixed.
 
-Nothing on the plan's cut list (§6) was needed — no AC was dropped or left an undocumented gap. One documentation debt surfaced past T15 — `diagrams/UML_Diagrams.docx` not regenerated to match the post-T15 class diagram — and was closed in a follow-up PR (#33) that also filled in this section. The `.docx` export was later removed from the repository entirely (kept as a local copy only); `diagrams/DIAGRAMS.md` plus the `.mmd`/`.png` sources remain the in-repo diagram record.
+Nothing on the plan's cut list (§6) was needed — no AC was dropped or left an undocumented gap. One documentation debt surfaced past T15 — `diagrams/UML_Diagrams.docx` not regenerated to match the post-T15 class diagram — and was closed in a follow-up PR (#33) that also filled in this section. The diagrams (and, later, the D1-D3 document pack) were subsequently removed from the repository entirely and are kept as local-only copies in `diagrams/` alongside the code, rather than committed.
