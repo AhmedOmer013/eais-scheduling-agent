@@ -11,5 +11,11 @@ audit.jsonl
 .worktrees/
 .superpowers/
 
-# Diagrams and the D1-D3 document pack are kept local-only, not in the repo.
-diagrams/
+# D1-D3 document pack is kept local-only (delivered outside the repo per
+# the brief), sharing the diagrams/ folder on disk but not committed here.
+diagrams/D2_Data_Model_ERD.docx
+diagrams/D3_Test_Plan.docx
+diagrams/SRS.docx
+diagrams/SRS_tightened.docx
+diagrams/erd.mmd
+diagrams/erd.png
