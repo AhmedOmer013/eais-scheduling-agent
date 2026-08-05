@@ -123,6 +123,65 @@ $ python -m eais_scheduling_agent.cli clinic "Dr. A today at 11am, patient Jane 
 Confirmed: Jane Roe with Dr. A at 2026-08-05 11:00:00.
 ```
 
+## Run the HTTP API (optional)
+
+The CLI above satisfies the brief's interface requirement on its own;
+the HTTP interface is an additional, optional way to run the same
+system, not a replacement.
+
+Requires the `http` extra:
+
+```
+pip install -e ".[http]"
+```
+
+Start the server (default: `127.0.0.1:5000`):
+
+```
+eais-book-server
+```
+
+or, if the console script is not on `PATH` (same Windows caveat as
+`eais-book` above):
+
+```
+python -c "from eais_scheduling_agent.http_api import run; run()"
+```
+
+Two endpoints, both exercising the exact same `SchedulingAgentCore` the
+CLI uses -- no separate decision logic:
+
+- `POST /bookings` -- body `{"sector": "clinic", "text": "...", "llm": false}`
+  (`llm` optional, defaults to `false`). Returns `{"status": "CONFIRMED",
+  "message": "..."}` or `{"status": "PENDING_APPROVAL", "reason": "..."}`.
+  An unrecognized sector returns `404`; a malformed body returns `400`.
+- `GET /audit` -- returns `{"records": [...]}`, the same JSON Lines
+  audit records `eais-book` writes, read back as a JSON array. Reads the
+  whole file from disk on every call, with no pagination or auth; since
+  `audit.jsonl` is shared with the CLI's default output file and
+  persists across server restarts, this can show records from previous
+  server runs and separate `eais-book` CLI invocations too -- even
+  though the in-memory booking store itself resets on every restart, so
+  `/audit` can list confirmed bookings the store has no memory of.
+
+```
+$ curl -X POST http://127.0.0.1:5000/bookings \
+    -H "Content-Type: application/json" \
+    -d '{"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"}'
+{"message":"Confirmed: John Doe with Dr. A at 2026-08-05 10:00:00.","status":"CONFIRMED"}
+```
+
+**One behavioral difference from the CLI, worth knowing:** the server
+keeps one shared in-memory booking store for as long as it runs, so two
+`POST /bookings` calls to the *same* running server can conflict with
+each other. The CLI cannot show this -- each `eais-book` invocation is a
+separate process with a fresh, empty store, so two separate CLI calls
+never conflict regardless of what they book. See
+`docs/superpowers/specs/2026-08-05-http-interface-design.md` for why.
+This reasoning assumes single-request-at-a-time handling; the dev server
+runs threaded by default and the store has no internal locking, so two
+truly concurrent requests are not guaranteed to serialize correctly.
+
 ## Run tests
 
 ```
@@ -142,7 +201,7 @@ Both were run in this worktree; real output:
 ```
 $ python -m pytest
 ...
-============================= 235 passed in 8.01s =============================
+============================= 251 passed in 8.01s =============================
 ```
 
 `pytest`'s configuration (`[tool.pytest.ini_options]` in
