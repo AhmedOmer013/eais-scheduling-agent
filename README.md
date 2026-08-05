@@ -156,7 +156,13 @@ CLI uses -- no separate decision logic:
   "message": "..."}` or `{"status": "PENDING_APPROVAL", "reason": "..."}`.
   An unrecognized sector returns `404`; a malformed body returns `400`.
 - `GET /audit` -- returns `{"records": [...]}`, the same JSON Lines
-  audit records `eais-book` writes, read back as a JSON array.
+  audit records `eais-book` writes, read back as a JSON array. Reads the
+  whole file from disk on every call, with no pagination or auth; since
+  `audit.jsonl` is shared with the CLI's default output file and
+  persists across server restarts, this can show records from previous
+  server runs and separate `eais-book` CLI invocations too -- even
+  though the in-memory booking store itself resets on every restart, so
+  `/audit` can list confirmed bookings the store has no memory of.
 
 ```
 $ curl -X POST http://127.0.0.1:5000/bookings \
@@ -172,6 +178,9 @@ each other. The CLI cannot show this -- each `eais-book` invocation is a
 separate process with a fresh, empty store, so two separate CLI calls
 never conflict regardless of what they book. See
 `docs/superpowers/specs/2026-08-05-http-interface-design.md` for why.
+This reasoning assumes single-request-at-a-time handling; the dev server
+runs threaded by default and the store has no internal locking, so two
+truly concurrent requests are not guaranteed to serialize correctly.
 
 ## Run tests
 
@@ -192,7 +201,7 @@ Both were run in this worktree; real output:
 ```
 $ python -m pytest
 ...
-============================= 235 passed in 8.01s =============================
+============================= 251 passed in 8.01s =============================
 ```
 
 `pytest`'s configuration (`[tool.pytest.ini_options]` in

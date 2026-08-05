@@ -1,11 +1,22 @@
 """Tests for the optional HTTP interface (eais_scheduling_agent.http_api).
 
-Uses Flask's built-in `test_client()` exclusively -- no real socket is
-opened at any point, matching the project's existing "no network access
-in tests" discipline (see README.md's "Run tests" section).
+Uses Flask's built-in `test_client()` exclusively -- Flask itself never
+opens a real socket (`test_client()` is in-process), matching the
+project's existing "no network access in tests" discipline (see
+README.md's "Run tests" section). The one exception is the `"llm": true`
+path (`TestLLMFlagFallsBackCleanly` below), which exercises the real
+`LLMIntake` -> `OllamaHTTPClient` -> `urllib.request.urlopen(...)` chain
+and does attempt (and gracefully fall back from) a real loopback
+connection to `localhost:11434` -- the same situation
+`tests/test_cli.py`'s equivalent test documents.
+
+Flask is an optional dependency (the `http` extra); this whole module is
+skipped cleanly, not a collection error, when it isn't installed.
 """
 
 import pytest
+
+flask = pytest.importorskip("flask")
 
 from eais_scheduling_agent.http_api import create_app
 

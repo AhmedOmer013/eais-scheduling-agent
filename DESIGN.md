@@ -42,26 +42,27 @@ packs lazily inside `__getitem__` would otherwise do that work twice.
 
 The type is `Mapping`, not `dict`, specifically so that *how* the
 identifier-to-instance association is built is entirely the caller's
-business. A plain `dict` (which is what `cli.py`'s `_skill_packs()`
-returns) is the simple, static case; nothing stops a future caller from
-supplying a `Mapping` that builds packs lazily, reads them from a
-plugin registry, or does anything else — the core's contract is
-satisfied by any object supporting `__getitem__`.
+business. A plain `dict` (which is what `wiring.py`'s
+`build_skill_packs()` returns) is the simple, static case; nothing stops
+a future caller from supplying a `Mapping` that builds packs lazily,
+reads them from a plugin registry, or does anything else — the core's
+contract is satisfied by any object supporting `__getitem__`.
 
 The person who is allowed to *build* that mapping — i.e. to write the
 literal strings `"clinic"`, `"clinic_v1"`, `ClinicSkillPack` in the same
-place — is whoever *constructs* `SchedulingAgentCore`. That happens to
-be `wiring.py` (originally part of `cli.py` at T14, extracted when the
-optional HTTP interface was added), which both `cli.py` and `http_api.py`
-consume rather than defining independently -- see `wiring.py`'s own
-module docstring. Every other component (T6 through T13) is built and tested
+place — is whoever assembles the collaborators for `SchedulingAgentCore`.
+That assembly now lives in `wiring.py` (originally part of `cli.py` at
+T14, extracted when the optional HTTP interface was added), consumed
+identically by both entry points (`cli.py` and `http_api.py`) when they
+construct `SchedulingAgentCore` -- see `wiring.py`'s own module
+docstring. Every other component (T6 through T13) is built and tested
 against `core.interfaces` / `skillpacks.base` alone, and the R1-proof
 test (T11, see §4 below) is what turns "the core never imports a
 concrete skill pack" from a claim into something continuously checked.
 
 The practical effect: adding a third sector is "write a new
 `SkillPack` subclass, write a new manifest, add one entry to a dict in
-`cli.py`" — verified concretely by T10's AC5 checkpoint (adding
+`wiring.py`" — verified concretely by T10's AC5 checkpoint (adding
 restaurant touched zero lines in `core/`, `manifests/manifest.py`, or
 `skillpacks/base.py`, confirmed independently twice: once via `git diff
 --stat`, once by the reviewer reading the diff file directly).
