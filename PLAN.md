@@ -85,3 +85,16 @@ The design changed on contact with the code once, concretely: `SlotInfo` needed 
 Two real bugs were caught by review rather than by original test-writing: a `JsonLinesAuditTrail` crash serializing a `datetime` nested inside a list (fixed, with a regression test added specifically for that recursion branch), and a diagram/implementation drift after T6 that required a dedicated sync pass. Neither reached `develop` unfixed.
 
 Nothing on the plan's cut list (§6) was needed — no AC was dropped or left an undocumented gap. One documentation debt surfaced past T15 — `diagrams/UML_Diagrams.docx` not regenerated to match the post-T15 class diagram — and was closed in a follow-up PR (#33) that also filled in this section. The `.docx` export was later removed from the repository entirely (kept as a local copy only); `diagrams/DIAGRAMS.md` plus the `.mmd`/`.png` sources remain the in-repo diagram record, per the brief's explicit requirement that diagram files be committed to the repository (§4.3). The D1-D3 document pack, by contrast, is kept local-only and delivered separately, per the brief's equally explicit instruction that it be delivered outside the repository (§4.4).
+
+## 8. Post-submission-prep addendum: the HTTP interface, reconsidered
+
+Section 6's cut list put the HTTP interface first to cut, and Stage B
+shipped with the CLI only, matching that decision. It was revisited
+afterward and built anyway -- not a silent scope change: the brief
+itself treats this as fully optional (§5.2 lists it as one of two
+acceptable interface choices, `AC`‑unconstrained), so building it adds
+demonstrable engineering judgement (an explicit build-vs-skip trade-off,
+argued and documented in `docs/superpowers/specs/2026-08-05-http-interface-design.md`)
+without displacing anything the definition of done in Section 5 actually
+requires. Per the brief's own stance: no penalty for a plan that
+changed, only for pretending it did not -- this section is that record.

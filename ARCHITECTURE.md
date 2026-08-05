@@ -27,6 +27,11 @@ graph TD
 
 **Dependency direction is one-way**: `SkillPack` and `Manifest` are read *by* the Core; the Core never imports or names a specific skill pack. `Gate`, `Audit`, and `Store` are owned by the Core and have no sector awareness of their own — they operate purely on the generic `BookingRequest` / `Decision` types.
 
+Sector-naming knowledge (which concrete `SkillPack` class backs each
+manifest's `skill_pack` string) lives in `eais_scheduling_agent/wiring.py`,
+shared by both entry points (`cli.py`, and the optional `http_api.py`) --
+neither entry point defines this mapping independently.
+
 ## 2. Sequence diagram — one booking request end to end
 
 _A version of this diagram with all six components named and the LLM/offline branch shown is in [`diagrams/sequence-diagram.mmd`](diagrams/sequence-diagram.mmd) / [`diagrams/DIAGRAMS.md`](diagrams/DIAGRAMS.md#2-one-level-deeper--sequence-diagram-behaviour)._
