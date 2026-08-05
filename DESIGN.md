@@ -51,9 +51,10 @@ satisfied by any object supporting `__getitem__`.
 The person who is allowed to *build* that mapping — i.e. to write the
 literal strings `"clinic"`, `"clinic_v1"`, `ClinicSkillPack` in the same
 place — is whoever *constructs* `SchedulingAgentCore`. That happens to
-be `cli.py` (T14), which is why `cli.py`'s own module docstring states
-plainly: "This is the one place in the project allowed to name
-sectors." Every other component (T6 through T13) is built and tested
+be `wiring.py` (originally part of `cli.py` at T14, extracted when the
+optional HTTP interface was added), which both `cli.py` and `http_api.py`
+consume rather than defining independently -- see `wiring.py`'s own
+module docstring. Every other component (T6 through T13) is built and tested
 against `core.interfaces` / `skillpacks.base` alone, and the R1-proof
 test (T11, see §4 below) is what turns "the core never imports a
 concrete skill pack" from a claim into something continuously checked.
@@ -261,14 +262,15 @@ touching a real socket.
 
 ## 6. The CLI wiring layer (T14)
 
-`eais_scheduling_agent/cli.py` is, by design, **the one place in the
-project allowed to name a sector.** Every prior component (T6–T13) is
-built and tested against `core.interfaces` / `skillpacks.base` alone
-and earns its sector-agnosticism specifically so that this one layer
-can stay simple: `_skill_packs()` is a five-line function mapping the
-literal strings `"clinic_v1"` / `"restaurant_v1"` to
-`ClinicSkillPack()` / `RestaurantSkillPack()` instances, and that
-dict is the entire sector-naming surface of the whole project (see §1).
+`eais_scheduling_agent/cli.py` was originally, by design, **the one
+place in the project allowed to name a sector** (T14). That knowledge
+now lives in `wiring.py`, shared with the optional HTTP interface added
+afterward -- `cli.py` remains the CLI-specific wiring (argument parsing,
+stdout rendering), but no longer defines the sector-naming mapping
+itself. Every prior component (T6–T13) is built and tested against
+`core.interfaces` / `skillpacks.base` alone and earns its
+sector-agnosticism specifically so that this one layer can stay simple
+(see §1).
 
 The other notable design point in this layer is `_CachingIntake`, a
 thin wrapper around whichever real `IntakeService` was selected
