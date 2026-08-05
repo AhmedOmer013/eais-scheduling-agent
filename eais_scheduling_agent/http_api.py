@@ -139,3 +139,13 @@ def create_app(
         return jsonify({"records": records}), 200
 
     return app
+
+
+def run() -> None:
+    """Console-script entry point (`eais-book-server`). Runs the dev server
+    on 127.0.0.1:5000 with default manifest/audit locations -- adequate for
+    the prototype/demo use this interface exists for; see the design spec's
+    "Out of scope" section for what this deliberately does not add
+    (HTTPS, auth, production WSGI server, etc.).
+    """
+    create_app().run()
