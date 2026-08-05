@@ -2,7 +2,7 @@
 
 Committed before any feature code, per the brief's plan-first rule. Requirements referenced below (`FRx`, `NFR-*`, `ACx`) are the ones defined in `docs/document-pack/SRS.docx` (D1) — that document, not the raw brief, is the authoritative requirements source this plan is built against. See `RESEARCH.md` for the technology survey and `ARCHITECTURE.md` for the component/sequence/data-contract detail this plan builds toward.
 
-Before starting T1, read [`diagrams/DIAGRAMS.md`](diagrams/DIAGRAMS.md) (also exported as `diagrams/UML_Diagrams.docx`) — it walks activity → sequence → class and the class diagram there is what T2-T13 are implemented against directly.
+Before starting T1, read [`diagrams/DIAGRAMS.md`](diagrams/DIAGRAMS.md) — it walks activity → sequence → class and the class diagram there is what T2-T13 are implemented against directly.
 
 ## 1. Task breakdown
 
@@ -84,4 +84,4 @@ The design changed on contact with the code once, concretely: `SlotInfo` needed 
 
 Two real bugs were caught by review rather than by original test-writing: a `JsonLinesAuditTrail` crash serializing a `datetime` nested inside a list (fixed, with a regression test added specifically for that recursion branch), and a diagram/implementation drift after T6 that required a dedicated sync pass. Neither reached `develop` unfixed.
 
-Nothing on the plan's cut list (§6) was needed — no AC was dropped or left an undocumented gap. The one genuine documentation debt still open past T15 is cosmetic: `diagrams/UML_Diagrams.docx` not yet regenerated to match the post-T15 class diagram, tracked honestly in `HANDOVER.md` rather than silently left stale.
+Nothing on the plan's cut list (§6) was needed — no AC was dropped or left an undocumented gap. One documentation debt surfaced past T15 — `diagrams/UML_Diagrams.docx` not regenerated to match the post-T15 class diagram — and was closed in a follow-up PR (#33) that also filled in this section. The `.docx` export was later removed from the repository entirely (kept as a local copy only); `diagrams/DIAGRAMS.md` plus the `.mmd`/`.png` sources remain the in-repo diagram record.

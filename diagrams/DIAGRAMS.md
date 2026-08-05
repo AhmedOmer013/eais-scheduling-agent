@@ -2,7 +2,7 @@
 
 This package walks through the design at three levels of altitude, each one step closer to the code: the **activity diagram** shows the broad business process a booking request goes through, the **sequence diagram** shows the same journey as concrete component-to-component behaviour, and the **class diagram** shows the actual objects that behaviour is implemented with. Read in this order — each diagram answers "how does what I just saw actually happen?"
 
-Sources (`.mmd`, Mermaid) live alongside this file and render natively in any Mermaid-aware viewer, including directly on GitHub. `UML_Diagrams.docx` in this same folder is an exported, standalone copy of this walkthrough with rendered images, for sharing outside the repo (e.g. printing, or reading before an interview without cloning anything).
+Sources (`.mmd`, Mermaid) live alongside this file and render natively in any Mermaid-aware viewer, including directly on GitHub. A standalone `.docx` export of this walkthrough (rendered images, for printing or reading before an interview without cloning anything) is kept as a local copy rather than committed to the repository.
 
 This package expands on — and is referenced from — [`../PLAN.md`](../PLAN.md) and [`../ARCHITECTURE.md`](../ARCHITECTURE.md). It does not replace the component diagram or data contracts in `ARCHITECTURE.md`; it goes one level deeper into *behaviour* and *object structure*.
 

@@ -158,12 +158,6 @@ modules are imported by the offline path at all).
 
 (Kept consistent with the fuller account in `HANDOVER.md`.)
 
-- **Diagram completeness**: `SlotInfo` and `RuleContext` (introduced
-  after the original class diagram was drawn) have been added to
-  `diagrams/class-diagram.mmd` and its regenerated
-  `diagrams/class-diagram.png` as part of this task. `diagrams/UML_Diagrams.docx`
-  was **not** regenerated to match and remains stale on this point — a
-  smaller version of the gap `HANDOVER.md` describes.
 - **`RestaurantSkillPack` table assignment** is static and deterministic
   (smallest fitting table), not a live-availability search — the
   interface calls `slot_rules()` before the store's conflict check, so
