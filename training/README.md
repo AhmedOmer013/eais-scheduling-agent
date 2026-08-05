@@ -4,8 +4,10 @@ These are **synthetic, hand-authored example utterances**, not scraped data — 
 
 ## Files
 
-- `clinic_examples.jsonl` — 10 examples for the clinic sector
-- `restaurant_examples.jsonl` — 10 examples for the restaurant sector
+- `clinic_examples.jsonl` — 20 examples for the clinic sector
+- `restaurant_examples.jsonl` — 20 examples for the restaurant sector
+
+The first 10 in each file (`clinic-01..10` / `rest-01..10`) predate T12 and were written against the *design*. The second 10 (`clinic-11..20` / `rest-11..20`) were added after T12 landed and are verified directly against the real `OfflineIntake`/skill-pack code — every `expected` value below was produced by actually running the text through `OfflineIntake.parse()` (and the relevant `validate()` for boundary cases), not inferred by reading the regex.
 
 Each line is one JSON object:
 
@@ -28,7 +30,15 @@ Each set spans, deliberately:
 - **over_capacity** — same boundary check, restaurant-specific
 - **casual_shorthand** — terse, typo'd, or abbreviated phrasing, to stress-test parser robustness
 - **preference_extra_field** — optional fields beyond the required set (seating preference, occasion) that a skill pack may or may not use
-- **unsupported_action** (clinic only) — a reschedule request, to confirm intake doesn't silently misfile it as a fresh, unrelated booking
+- **unsupported_action** — a reschedule or cancel request, to confirm intake doesn't silently misfile it as a fresh, unrelated booking
+
+Added in the second batch (`clinic-11..20` / `rest-11..20`), grounded against the real T12 implementation:
+
+- **date/time pattern coverage** — 24-hour clock time, "this &lt;weekday&gt;", bare weekday with no qualifier, and further unresolvable-date phrasings ("next month", "this month") distinct from the original set's "next week"
+- **extraction-truncation limitations** — two *documented parser limitations*, not bugs to fix blindly: a multi-word practitioner surname ("Dr. Van Der Berg") truncates to "Dr. Van", and a three-word patient name truncates to its first two words. Worth a `DESIGN.md` mention if either matters for a future sector.
+- **exact boundary cases** — a party size exactly at the largest table's capacity (fits) vs. one over (over-capacity); a request exactly at opening time (inclusive, valid) vs. exactly at closing time (exclusive, invalid)
+- **valid-extraction-then-downstream-rejection** — a practitioner name that parses cleanly but isn't on the clinic's roster (`unknown practitioner`, caught by `validate()`, not by intake)
+- **customer_name extraction** — the restaurant's `_CUSTOMER_NAME_RE` ("under the name X") pattern, untested by the original 10, which never named a customer at all
 
 ## How this is meant to be used
 
