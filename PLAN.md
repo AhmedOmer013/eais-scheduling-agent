@@ -76,4 +76,12 @@ In order: (1) HTTP interface — keep CLI only, since neither is required by any
 
 ## 7. Plan vs. actual
 
-_To be completed at the end of Stage B — approx. 200-300 words comparing this plan to what actually happened: where estimates were wrong, where the design changed on contact with the code, what was cut, and which AC(s), if any, ended up undocumented gaps rather than passes._
+The build order held exactly as planned — T1 through T15, in sequence, each merged via its own reviewed PR, with no task started out of order and no sector-specific shortcut taken to get T10 done faster. The T5-T9 checkpoint worked as intended: by the time T10 (the restaurant sector) landed, it touched only a new manifest and a new skill-pack package, zero diffs to `core/`, matching the AC5 claim on the first attempt rather than after cleanup.
+
+Wall-clock time came in well under the ~10-12 hour estimate — Stage A through T15 closed in a single continuous session rather than spread across days — but the effort *shape* matched the budget's relative proportions closely: T5-T9 was the largest single block, T14 the smallest, exactly as allocated.
+
+The design changed on contact with the code once, concretely: `SlotInfo` needed widening with `resource_key` and `start` fields (see the "T9 prep" commit) that `ARCHITECTURE.md`'s original data contract hadn't anticipated — conflict detection needed to know *what* resource and *when*, not just a duration, to compare two bookings. This was caught before T9 itself was implemented, not after, so it cost a small prep commit rather than a rework.
+
+Two real bugs were caught by review rather than by original test-writing: a `JsonLinesAuditTrail` crash serializing a `datetime` nested inside a list (fixed, with a regression test added specifically for that recursion branch), and a diagram/implementation drift after T6 that required a dedicated sync pass. Neither reached `develop` unfixed.
+
+Nothing on the plan's cut list (§6) was needed — no AC was dropped or left an undocumented gap. The one genuine documentation debt still open past T15 is cosmetic: `diagrams/UML_Diagrams.docx` not yet regenerated to match the post-T15 class diagram, tracked honestly in `HANDOVER.md` rather than silently left stale.

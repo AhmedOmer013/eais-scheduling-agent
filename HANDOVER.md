@@ -26,11 +26,6 @@ See `README.md` for the full install/run/test walkthrough.
 
 ## Known gaps
 
-- `diagrams/class-diagram.mmd`/`.png` now include `SlotInfo` and
-  `RuleContext` as classes (closed in T15). `diagrams/UML_Diagrams.docx`
-  was not regenerated to match — it still reflects the pre-T15 diagram
-  set. Regenerating it needs to embed the updated renders, not just swap
-  two images; left as the one remaining documented gap.
 - `RestaurantSkillPack` assigns tables deterministically (smallest
   fitting table) without live-availability visibility, since the
   interface calls `slot_rules()` before `check_conflict()`. Documented in
