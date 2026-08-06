@@ -539,3 +539,97 @@ class TestRejectPendingRequest:
     def test_reject_unknown_id_returns_404(self, client):
         response = client.post("/pending/does-not-exist/reject")
         assert response.status_code == 404
+
+
+class TestClinicConfigEndpoint:
+    def test_get_returns_current_practitioners_and_hours(self, client):
+        response = client.get("/config/clinic")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+        assert body["working_hours"] == {"open": "09:00", "close": "17:00"}
+
+    def test_post_adds_a_new_practitioner(self, client):
+        response = client.post("/config/clinic", json={"practitioners": {"Dr. C": 25}})
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["practitioners"] == {"Dr. A": 30, "Dr. B": 20, "Dr. C": 25}
+
+    def test_post_changes_an_existing_practitioners_duration(self, client):
+        client.post("/config/clinic", json={"practitioners": {"Dr. A": 45}})
+        response = client.get("/config/clinic")
+        assert response.get_json()["practitioners"]["Dr. A"] == 45
+
+    def test_post_new_practitioner_is_immediately_bookable(self, client):
+        client.post("/config/clinic", json={"practitioners": {"Dr. C": 25}})
+
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. C today at 10am, patient John Doe"},
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+
+    def test_post_changes_working_hours(self, client):
+        response = client.post(
+            "/config/clinic", json={"working_hours": {"open": "08:00", "close": "12:00"}}
+        )
+        assert response.status_code == 200
+        assert response.get_json()["working_hours"] == {"open": "08:00", "close": "12:00"}
+
+    def test_post_rejects_non_object_body(self, client):
+        response = client.post("/config/clinic", json="not an object")
+        assert response.status_code == 400
+
+    def test_post_rejects_non_dict_practitioners(self, client):
+        response = client.post("/config/clinic", json={"practitioners": "Dr. C"})
+        assert response.status_code == 400
+
+    def test_post_rejects_non_positive_duration(self, client):
+        response = client.post("/config/clinic", json={"practitioners": {"Dr. C": 0}})
+        assert response.status_code == 400
+
+    def test_post_with_empty_practitioners_object_is_a_no_op_merge(self, client):
+        # Merge semantics (see Step 8): {} has nothing to update, so the
+        # current config comes back unchanged -- not an error, since {}
+        # is a valid "no additions" request, not an attempt to empty it.
+        response = client.post("/config/clinic", json={"practitioners": {}})
+        assert response.status_code == 200
+        assert response.get_json()["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+
+    def test_post_rejects_malformed_working_hours(self, client):
+        response = client.post(
+            "/config/clinic", json={"working_hours": {"open": "not-a-time", "close": "17:00"}}
+        )
+        assert response.status_code == 400
+
+
+class TestRestaurantConfigEndpoint:
+    def test_get_returns_current_tables_and_hours(self, client):
+        response = client.get("/config/restaurant")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["tables"] == {"T1": 2, "T2": 2, "T3": 4, "T4": 6, "T5": 8}
+        assert body["working_hours"] == {"open": "11:00", "close": "22:00"}
+
+    def test_post_adds_a_new_table(self, client):
+        response = client.post("/config/restaurant", json={"tables": {"T6": 12}})
+        assert response.status_code == 200
+        assert response.get_json()["tables"]["T6"] == 12
+
+    def test_post_new_table_is_immediately_bookable(self, client):
+        client.post("/config/restaurant", json={"tables": {"T6": 20}})
+
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "restaurant",
+                "text": "table for 15 today at 6pm, customer Jane Smith",
+            },
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+
+    def test_post_rejects_non_positive_capacity(self, client):
+        response = client.post("/config/restaurant", json={"tables": {"T6": -1}})
+        assert response.status_code == 400

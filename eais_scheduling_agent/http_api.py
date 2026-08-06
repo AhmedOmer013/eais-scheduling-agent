@@ -69,6 +69,8 @@ from eais_scheduling_agent.core.store import InMemoryBookingStore
 from eais_scheduling_agent.intake.llm import LLMIntake, OpenAICompatibleHTTPClient
 from eais_scheduling_agent.intake.offline import OfflineIntake
 from eais_scheduling_agent.pending import PendingRequestStore
+from eais_scheduling_agent.skillpacks.clinic import ClinicSkillPack
+from eais_scheduling_agent.skillpacks.restaurant import RestaurantSkillPack
 
 _CONFIRMED = "CONFIRMED"
 _MISSING_FIELDS_PREFIX = "missing required field(s): "
@@ -394,6 +396,94 @@ def create_app(
             ),
             200,
         )
+
+    @app.get("/config/clinic")
+    def get_clinic_config():
+        pack = skill_packs["clinic_v1"]
+        return jsonify({"practitioners": pack.practitioners, "working_hours": pack.working_hours}), 200
+
+    @app.post("/config/clinic")
+    def post_clinic_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        current = skill_packs["clinic_v1"]
+        practitioners = dict(current.practitioners)
+        if "practitioners" in body:
+            new_entries = body["practitioners"]
+            valid = isinstance(new_entries, dict) and all(
+                isinstance(name, str)
+                and isinstance(minutes, int)
+                and not isinstance(minutes, bool)
+                and minutes > 0
+                for name, minutes in new_entries.items()
+            )
+            if not valid:
+                return (
+                    jsonify(
+                        {"error": "'practitioners' must be an object of name -> positive integer minutes"}
+                    ),
+                    400,
+                )
+            practitioners.update(new_entries)
+
+        working_hours = dict(current.working_hours)
+        if "working_hours" in body:
+            if not isinstance(body["working_hours"], dict):
+                return jsonify({"error": "'working_hours' must be an object with 'open'/'close'"}), 400
+            working_hours = body["working_hours"]
+
+        try:
+            new_pack = ClinicSkillPack(practitioners=practitioners, working_hours=working_hours)
+        except (ValueError, KeyError) as exc:
+            return jsonify({"error": f"invalid config: {exc}"}), 400
+
+        skill_packs["clinic_v1"] = new_pack
+        return jsonify({"practitioners": new_pack.practitioners, "working_hours": new_pack.working_hours}), 200
+
+    @app.get("/config/restaurant")
+    def get_restaurant_config():
+        pack = skill_packs["restaurant_v1"]
+        return jsonify({"tables": pack.tables, "working_hours": pack.working_hours}), 200
+
+    @app.post("/config/restaurant")
+    def post_restaurant_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        current = skill_packs["restaurant_v1"]
+        tables = dict(current.tables)
+        if "tables" in body:
+            new_entries = body["tables"]
+            valid = isinstance(new_entries, dict) and all(
+                isinstance(table_id, str)
+                and isinstance(capacity, int)
+                and not isinstance(capacity, bool)
+                and capacity > 0
+                for table_id, capacity in new_entries.items()
+            )
+            if not valid:
+                return (
+                    jsonify({"error": "'tables' must be an object of table id -> positive integer capacity"}),
+                    400,
+                )
+            tables.update(new_entries)
+
+        working_hours = dict(current.working_hours)
+        if "working_hours" in body:
+            if not isinstance(body["working_hours"], dict):
+                return jsonify({"error": "'working_hours' must be an object with 'open'/'close'"}), 400
+            working_hours = body["working_hours"]
+
+        try:
+            new_pack = RestaurantSkillPack(tables=tables, working_hours=working_hours)
+        except (ValueError, KeyError) as exc:
+            return jsonify({"error": f"invalid config: {exc}"}), 400
+
+        skill_packs["restaurant_v1"] = new_pack
+        return jsonify({"tables": new_pack.tables, "working_hours": new_pack.working_hours}), 200
 
     return app
 
