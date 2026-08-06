@@ -47,6 +47,7 @@ submitted again after midnight.
 """
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
@@ -66,6 +67,7 @@ from eais_scheduling_agent.core.orchestrator import (
 from eais_scheduling_agent.core.store import InMemoryBookingStore
 from eais_scheduling_agent.intake.llm import LLMIntake, OpenAICompatibleHTTPClient
 from eais_scheduling_agent.intake.offline import OfflineIntake
+from eais_scheduling_agent.pending import PendingRequestStore
 
 _CONFIRMED = "CONFIRMED"
 _MISSING_FIELDS_PREFIX = "missing required field(s): "
@@ -97,6 +99,20 @@ def _read_audit_records(path: Path) -> list:
     return records
 
 
+def _pending_item_to_json(item: dict) -> dict:
+    """`PendingRequestStore.list()` returns real `datetime` objects inside
+    `fields` (see that module's docstring) -- Flask's `jsonify` cannot
+    serialize those directly, so this converts just that one field back
+    to a string for the HTTP response.
+    """
+    result = dict(item)
+    fields = dict(result["fields"])
+    if isinstance(fields.get("start_time"), datetime):
+        fields["start_time"] = fields["start_time"].isoformat()
+    result["fields"] = fields
+    return result
+
+
 class _RuntimeLLMConfig:
     """In-memory override for the LLM backend config, settable via
     `POST /config`. Each field is `None` until explicitly set, meaning
@@ -125,6 +141,7 @@ class _RuntimeLLMConfig:
 def create_app(
     manifest_dir: Union[str, Path] = wiring.DEFAULT_MANIFEST_DIR,
     audit_file: Union[str, Path] = "audit.jsonl",
+    pending_file: Union[str, Path] = "pending_requests.json",
 ) -> Flask:
     """Build a Flask app with a shared store/gate/audit for its whole lifetime.
 
@@ -135,6 +152,8 @@ def create_app(
         audit_file: JSON Lines audit file both `POST /bookings` appends
             to and `GET /audit` reads back (default: `audit.jsonl`,
             already git-ignored -- same default `eais-book` uses).
+        pending_file: Path to the JSON file backing the human accept/reject
+            queue (default: pending_requests.json, gitignored).
     """
     app = Flask(__name__)
 
@@ -147,6 +166,7 @@ def create_app(
         for sector in _SECTORS
     }
     runtime_config = _RuntimeLLMConfig()
+    pending_store = PendingRequestStore(path=pending_file)
 
     @app.get("/")
     def dashboard():
@@ -214,7 +234,25 @@ def create_app(
         if decision.reason.startswith(_MISSING_FIELDS_PREFIX):
             return jsonify({"status": _NEEDS_CLARIFICATION, "reason": decision.reason}), 200
 
+        manifest = wiring.load_manifest_for_render(manifest_dir, sector)
+        booking_request = intake.parse(text, sector)  # cache hit
+        pending_store.add(
+            sector=sector,
+            text=text,
+            fields=booking_request.fields,
+            skill_pack=manifest.skill_pack,
+            reason=decision.reason,
+        )
         return jsonify({"status": _PENDING_APPROVAL, "reason": decision.reason}), 200
+
+    @app.get("/pending")
+    def get_pending():
+        sector = request.args.get("sector")
+        if sector is not None and sector not in _SECTORS:
+            return jsonify({"error": f"unknown sector: {sector!r}"}), 400
+
+        items = pending_store.list(sector=sector)
+        return jsonify({"items": [_pending_item_to_json(item) for item in items]}), 200
 
     @app.get("/audit")
     def get_audit():

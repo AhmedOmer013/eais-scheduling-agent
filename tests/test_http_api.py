@@ -24,7 +24,8 @@ from eais_scheduling_agent.http_api import create_app
 @pytest.fixture
 def client(tmp_path):
     audit_path = tmp_path / "audit.jsonl"
-    app = create_app(audit_file=str(audit_path))
+    pending_path = tmp_path / "pending_requests.json"
+    app = create_app(audit_file=str(audit_path), pending_file=str(pending_path))
     app.testing = True
     return app.test_client()
 
@@ -393,3 +394,53 @@ class TestNeedsClarification:
         body = response.get_json()
         assert body["status"] == "PENDING_APPROVAL"
         assert "unknown practitioner" in body["reason"]
+
+
+class TestPendingQueueWrite:
+    def test_violation_is_queued_and_missing_fields_is_not(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "book me in with the doctor tomorrow"},
+        )
+
+        response = client.get("/pending")
+        items = response.get_json()["items"]
+
+        assert len(items) == 1
+        assert "unknown practitioner" in items[0]["reason"]
+        assert items[0]["sector"] == "clinic"
+
+    def test_confirmed_booking_is_not_queued(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        response = client.get("/pending")
+        assert response.get_json()["items"] == []
+
+    def test_sector_filter(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 99 today at 6pm, customer Jane Smith"},
+        )
+
+        clinic_items = client.get("/pending?sector=clinic").get_json()["items"]
+        restaurant_items = client.get("/pending?sector=restaurant").get_json()["items"]
+
+        assert len(clinic_items) == 1
+        assert len(restaurant_items) == 1
+        assert clinic_items[0]["sector"] == "clinic"
+        assert restaurant_items[0]["sector"] == "restaurant"
+
+    def test_unknown_sector_filter_returns_400(self, client):
+        response = client.get("/pending?sector=veterinary")
+        assert response.status_code == 400
