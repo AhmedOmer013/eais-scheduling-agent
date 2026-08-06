@@ -245,3 +245,14 @@ class TestPostConfig:
         response = client.post("/config", data="not json", content_type="text/plain")
 
         assert response.status_code == 400
+
+
+class TestDashboardPage:
+    def test_returns_200_with_expected_sections(self, client):
+        response = client.get("/")
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert 'id="booking-form"' in html
+        assert 'id="audit-table"' in html
+        assert 'id="config-form"' in html

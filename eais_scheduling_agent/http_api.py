@@ -109,6 +109,10 @@ def create_app(
     audit = JsonLinesAuditTrail(path=audit_file)
     runtime_config = _RuntimeLLMConfig()
 
+    @app.get("/")
+    def dashboard():
+        return render_template("dashboard.html")
+
     @app.post("/bookings")
     def post_booking():
         body = request.get_json(silent=True)
