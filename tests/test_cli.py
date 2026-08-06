@@ -145,7 +145,7 @@ class TestUnknownSector:
 
 
 class TestLLMFlagFallsBackCleanly:
-    """`--llm` with no local Ollama server still completes via fallback.
+    """`--llm` with no LLM backend reachable still completes via fallback.
 
     No LLM runtime is installed in this environment (or CI) -- see
     `intake/llm.py`'s module docstring. This exercises the real,

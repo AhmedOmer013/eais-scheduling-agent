@@ -108,15 +108,17 @@ the decision, and a UTC timestamp.
 
 ### `--llm` mode
 
-`--llm` swaps the offline parser for an LLM-backed one (via a local
-[Ollama](https://ollama.com) server, model `llama3.2` by default). It
-requires a locally running Ollama instance to do anything beyond what
-offline mode already does — **it is not required for the default
-path**, and `--llm` is safe to pass even without Ollama running: on any
-failure (Ollama not running, unreachable, or returning something
-unusable) it automatically and silently falls back to the same offline
-parser used by default, never raising and never blocking. Verified in
-this environment (no Ollama installed here):
+`--llm` swaps the offline parser for an LLM-backed one, talking to any
+OpenAI-compatible API — a local [Ollama](https://ollama.com) server by
+default (model `llama3.2`), or a hosted server (e.g. vLLM) if configured
+-- see "Configuring the LLM backend" below. It requires a reachable LLM
+server to do anything beyond what offline mode already does — **it is
+not required for the default path**, and `--llm` is safe to pass even
+without one running: on any failure (unreachable, timed out, or
+returning something unusable) it automatically and silently falls back
+to the same offline parser used by default, never raising and never
+blocking. Verified in this environment (no local model server running
+here):
 
 ```
 $ python -m eais_scheduling_agent.cli clinic "Dr. A today at 11am, patient Jane Roe" --llm
@@ -224,11 +226,12 @@ modules are imported by the offline path at all).
   assignment time. Documented as an accepted design trade-off in the
   class's own docstring, not a bug. See `DESIGN.md` §3.
 - **No local LLM runtime is installed in this environment.** `LLMIntake`'s
-  real Ollama-calling code (`OllamaHTTPClient`) is exercised in
-  production but not against a real network call in this environment or
-  CI; its fallback and validation logic are fully tested against
-  injected fakes, and its failure-handling contract is exercised
-  end-to-end (see `--llm` above).
+  real network-calling code (`OpenAICompatibleHTTPClient`) is exercised
+  in production but not against a real network call in this environment
+  or CI; its request-building logic is directly tested via a
+  monkeypatched `urlopen`, its fallback and validation logic are fully
+  tested against injected fakes, and its failure-handling contract is
+  exercised end-to-end (see `--llm` above).
 
 ## Further reading
 

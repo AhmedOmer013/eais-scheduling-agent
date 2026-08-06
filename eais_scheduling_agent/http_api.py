@@ -108,7 +108,9 @@ def create_app(
         use_llm = body.get("llm") is True
 
         if use_llm:
-            intake = wiring.CachingIntake(LLMIntake(fallback=OfflineIntake()))
+            intake = wiring.CachingIntake(
+                LLMIntake(fallback=OfflineIntake(), client=wiring.build_llm_client())
+            )
         else:
             intake = wiring.CachingIntake(OfflineIntake())
 

@@ -137,7 +137,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     offline = OfflineIntake()
-    real_intake: IntakeService = LLMIntake(fallback=offline) if args.llm else offline
+    real_intake: IntakeService = (
+        LLMIntake(fallback=offline, client=wiring.build_llm_client())
+        if args.llm
+        else offline
+    )
     intake: IntakeService = wiring.CachingIntake(real_intake)
     skill_packs = wiring.build_skill_packs()
 

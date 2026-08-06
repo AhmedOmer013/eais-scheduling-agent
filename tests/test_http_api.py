@@ -5,7 +5,7 @@ opens a real socket (`test_client()` is in-process), matching the
 project's existing "no network access in tests" discipline (see
 README.md's "Run tests" section). The one exception is the `"llm": true`
 path (`TestLLMFlagFallsBackCleanly` below), which exercises the real
-`LLMIntake` -> `OllamaHTTPClient` -> `urllib.request.urlopen(...)` chain
+`LLMIntake` -> `OpenAICompatibleHTTPClient` -> `urllib.request.urlopen(...)` chain
 and does attempt (and gracefully fall back from) a real loopback
 connection to `localhost:11434` -- the same situation
 `tests/test_cli.py`'s equivalent test documents.
