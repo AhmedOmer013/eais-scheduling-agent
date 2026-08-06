@@ -1,22 +1,32 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const bookingForm = document.getElementById("booking-form");
-  const bookingResult = document.getElementById("booking-result");
-  const sectorSelect = document.getElementById("sector");
-  const textInput = document.getElementById("text");
-  const useLlmCheckbox = document.getElementById("use-llm");
-  const auditBody = document.getElementById("audit-body");
-  const refreshAuditButton = document.getElementById("refresh-audit");
-  const configForm = document.getElementById("config-form");
-  const configResult = document.getElementById("config-result");
-  const baseUrlInput = document.getElementById("base-url");
-  const modelInput = document.getElementById("model");
-  const apiKeyInput = document.getElementById("api-key");
-  const apiKeyHint = document.getElementById("api-key-hint");
-  const timeoutInput = document.getElementById("timeout");
+  // -- Tab switching --------------------------------------------------
+  const tabButtons = document.querySelectorAll(".tab-button");
+  const tabPanels = document.querySelectorAll(".tab-panel");
+
+  function activateTab(tabId) {
+    for (const button of tabButtons) {
+      button.classList.toggle("active", button.dataset.tab === tabId);
+    }
+    for (const panel of tabPanels) {
+      panel.classList.toggle("active", panel.id === tabId);
+    }
+    if (tabId === "tab-pending") loadPending();
+    if (tabId === "tab-audit-clinic") {
+      loadAudit("clinic");
+      loadClinicRules();
+    }
+    if (tabId === "tab-audit-restaurant") {
+      loadAudit("restaurant");
+      loadRestaurantRules();
+    }
+  }
+
+  for (const button of tabButtons) {
+    button.addEventListener("click", () => activateTab(button.dataset.tab));
+  }
 
   // Disables `button` and swaps its label to `loadingLabel` for the
-  // duration of `action()`, restoring the original label afterward --
-  // purely a visual loading cue, no behavior change to the request itself.
+  // duration of `action()`, restoring the original label afterward.
   async function withLoading(button, loadingLabel, action) {
     const originalLabel = button.textContent;
     button.disabled = true;
@@ -29,16 +39,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Sets `el`'s text and (re)triggers its fade-in transition, even if the
-  // same element already held that class from a previous call -- forcing
-  // a reflow between removing and re-adding "visible" is what makes the
-  // opacity transition replay on every result, not just the first one.
-  function flashResult(el, text) {
+  function flashResult(el, text, statusClass) {
     el.textContent = text;
-    el.classList.remove("visible");
+    el.className = "result";
     void el.offsetWidth;
-    el.classList.add("visible");
+    el.classList.add(statusClass, "visible");
   }
+
+  // -- Booking form -----------------------------------------------------
+  const bookingForm = document.getElementById("booking-form");
+  const bookingResult = document.getElementById("booking-result");
+  const sectorSelect = document.getElementById("sector");
+  const textInput = document.getElementById("text");
+  const useLlmCheckbox = document.getElementById("use-llm");
+
+  const STATUS_MESSAGES = {
+    CONFIRMED: (body) => ({ text: body.message, cls: "status-confirmed" }),
+    PENDING_APPROVAL: (body) => ({
+      text: `Sent for human review: ${body.reason}`,
+      cls: "status-pending",
+    }),
+    NEEDS_CLARIFICATION: (body) => ({
+      text: `We couldn't quite process that -- ${body.reason.replace("missing required field(s): ", "missing: ")}. Try rephrasing with more detail.`,
+      cls: "status-clarify",
+    }),
+  };
 
   bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -57,38 +82,240 @@ document.addEventListener("DOMContentLoaded", () => {
       const body = await response.json();
 
       if (response.ok) {
-        flashResult(
-          bookingResult,
-          body.status === "CONFIRMED" ? body.message : `Pending approval: ${body.reason}`
-        );
+        const rendered = STATUS_MESSAGES[body.status](body);
+        flashResult(bookingResult, rendered.text, rendered.cls);
       } else {
-        flashResult(bookingResult, `Error: ${body.error}`);
+        flashResult(bookingResult, `Error: ${body.error}`, "status-error");
       }
 
-      await loadAudit();
+      if (document.getElementById("tab-pending").classList.contains("active")) {
+        loadPending();
+      }
+      refreshPendingBadge();
     });
   });
 
-  async function loadAudit() {
-    const response = await fetch("/audit");
+  // -- Pending queue ------------------------------------------------------
+  const pendingList = document.getElementById("pending-list");
+  const pendingBadge = document.getElementById("pending-badge");
+  const refreshPendingButton = document.getElementById("refresh-pending");
+
+  async function refreshPendingBadge() {
+    const response = await fetch("/pending");
     const body = await response.json();
-    auditBody.innerHTML = "";
-    for (const record of body.records) {
-      const row = document.createElement("tr");
-      row.className = "audit-row";
-      row.innerHTML =
-        "<td></td><td></td><td></td><td></td>";
-      row.children[0].textContent = record.timestamp;
-      row.children[1].textContent = record.skill_pack;
-      row.children[2].textContent = record.input;
-      row.children[3].textContent = record.decision;
-      auditBody.appendChild(row);
+    pendingBadge.textContent = body.items.length;
+  }
+
+  function renderPendingCard(item) {
+    const card = document.createElement("div");
+    card.className = "pending-card";
+    card.innerHTML = `
+      <div class="meta"></div>
+      <div class="text"></div>
+      <div class="reason"></div>
+      <div class="actions">
+        <button type="button" class="accept">Accept</button>
+        <button type="button" class="reject">Reject</button>
+      </div>
+    `;
+    card.querySelector(".meta").textContent = item.sector;
+    card.querySelector(".text").textContent = `"${item.text}"`;
+    card.querySelector(".reason").textContent = item.reason;
+
+    card.querySelector(".accept").addEventListener("click", async (event) => {
+      await withLoading(event.target, "Accepting...", async () => {
+        const response = await fetch(`/pending/${item.id}/accept`, { method: "POST" });
+        const body = await response.json();
+        if (!response.ok) {
+          alert(`Could not accept: ${body.error}`);
+        }
+        await loadPending();
+        await refreshPendingBadge();
+      });
+    });
+
+    card.querySelector(".reject").addEventListener("click", async (event) => {
+      await withLoading(event.target, "Rejecting...", async () => {
+        await fetch(`/pending/${item.id}/reject`, { method: "POST" });
+        await loadPending();
+        await refreshPendingBadge();
+      });
+    });
+
+    return card;
+  }
+
+  async function loadPending() {
+    const response = await fetch("/pending");
+    const body = await response.json();
+    pendingList.innerHTML = "";
+    if (body.items.length === 0) {
+      pendingList.innerHTML = '<p class="empty-state">Nothing pending.</p>';
+      return;
+    }
+    for (const item of body.items) {
+      pendingList.appendChild(renderPendingCard(item));
     }
   }
 
-  refreshAuditButton.addEventListener("click", () => {
-    withLoading(refreshAuditButton, "Refreshing...", loadAudit);
+  refreshPendingButton.addEventListener("click", () => {
+    withLoading(refreshPendingButton, "Refreshing...", loadPending);
   });
+
+  // -- Audit tabs (per sector) --------------------------------------------
+  async function loadAudit(sector) {
+    const response = await fetch(`/audit?sector=${sector}`);
+    const body = await response.json();
+    const tbody = document.getElementById(`audit-body-${sector}`);
+    tbody.innerHTML = "";
+    for (const record of body.records) {
+      const row = document.createElement("tr");
+      row.innerHTML = "<td></td><td></td><td></td><td></td>";
+      row.children[0].textContent = record.timestamp;
+      row.children[1].textContent = record.input;
+      row.children[2].textContent = record.decision;
+      row.children[3].textContent = record.approval_status;
+      tbody.appendChild(row);
+    }
+  }
+
+  for (const button of document.querySelectorAll(".refresh-audit")) {
+    button.addEventListener("click", () => {
+      withLoading(button, "Refreshing...", () => loadAudit(button.dataset.sector));
+    });
+  }
+
+  // -- Slot rules (per sector) ---------------------------------------------
+  function renderRulesDisplay(dl, items, workingHours) {
+    dl.innerHTML = "";
+    for (const [name, value] of Object.entries(items)) {
+      const dt = document.createElement("dt");
+      dt.textContent = name;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+    const hoursDt = document.createElement("dt");
+    hoursDt.textContent = "Hours";
+    const hoursDd = document.createElement("dd");
+    hoursDd.textContent = `${workingHours.open}–${workingHours.close}`;
+    dl.appendChild(hoursDt);
+    dl.appendChild(hoursDd);
+  }
+
+  async function loadClinicRules() {
+    const response = await fetch("/config/clinic");
+    const body = await response.json();
+    const items = {};
+    for (const [name, minutes] of Object.entries(body.practitioners)) {
+      items[name] = `${minutes} min`;
+    }
+    renderRulesDisplay(document.getElementById("clinic-rules-display"), items, body.working_hours);
+  }
+
+  async function loadRestaurantRules() {
+    const response = await fetch("/config/restaurant");
+    const body = await response.json();
+    const items = {};
+    for (const [tableId, capacity] of Object.entries(body.tables)) {
+      items[tableId] = `${capacity} seats`;
+    }
+    renderRulesDisplay(
+      document.getElementById("restaurant-rules-display"),
+      items,
+      body.working_hours
+    );
+  }
+
+  for (const toggle of document.querySelectorAll(".toggle-edit")) {
+    toggle.addEventListener("click", () => {
+      document.getElementById(toggle.dataset.target).classList.toggle("hidden");
+    });
+  }
+
+  const clinicRulesForm = document.getElementById("clinic-rules-form");
+  const clinicRulesResult = document.getElementById("clinic-rules-result");
+
+  clinicRulesForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = clinicRulesForm.querySelector("button[type=submit]");
+    const name = document.getElementById("clinic-practitioner-name").value.trim();
+    const duration = document.getElementById("clinic-practitioner-duration").value;
+    const open = document.getElementById("clinic-open").value.trim();
+    const close = document.getElementById("clinic-close").value.trim();
+
+    const payload = {};
+    if (name !== "" && duration !== "") {
+      payload.practitioners = { [name]: Number(duration) };
+    }
+    if (open !== "" && close !== "") {
+      payload.working_hours = { open, close };
+    }
+
+    await withLoading(submitButton, "Saving...", async () => {
+      const response = await fetch("/config/clinic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+
+      if (response.ok) {
+        flashResult(clinicRulesResult, "Saved.", "status-confirmed");
+        clinicRulesForm.reset();
+        await loadClinicRules();
+      } else {
+        flashResult(clinicRulesResult, `Error: ${body.error}`, "status-error");
+      }
+    });
+  });
+
+  const restaurantRulesForm = document.getElementById("restaurant-rules-form");
+  const restaurantRulesResult = document.getElementById("restaurant-rules-result");
+
+  restaurantRulesForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = restaurantRulesForm.querySelector("button[type=submit]");
+    const tableId = document.getElementById("restaurant-table-id").value.trim();
+    const capacity = document.getElementById("restaurant-table-capacity").value;
+    const open = document.getElementById("restaurant-open").value.trim();
+    const close = document.getElementById("restaurant-close").value.trim();
+
+    const payload = {};
+    if (tableId !== "" && capacity !== "") {
+      payload.tables = { [tableId]: Number(capacity) };
+    }
+    if (open !== "" && close !== "") {
+      payload.working_hours = { open, close };
+    }
+
+    await withLoading(submitButton, "Saving...", async () => {
+      const response = await fetch("/config/restaurant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+
+      if (response.ok) {
+        flashResult(restaurantRulesResult, "Saved.", "status-confirmed");
+        restaurantRulesForm.reset();
+        await loadRestaurantRules();
+      } else {
+        flashResult(restaurantRulesResult, `Error: ${body.error}`, "status-error");
+      }
+    });
+  });
+
+  // -- Config -------------------------------------------------------------
+  const configForm = document.getElementById("config-form");
+  const configResult = document.getElementById("config-result");
+  const baseUrlInput = document.getElementById("base-url");
+  const modelInput = document.getElementById("model");
+  const apiKeyInput = document.getElementById("api-key");
+  const apiKeyHint = document.getElementById("api-key-hint");
+  const timeoutInput = document.getElementById("timeout");
 
   async function loadConfig() {
     const response = await fetch("/config");
@@ -123,15 +350,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const body = await response.json();
 
       if (response.ok) {
-        flashResult(configResult, "Saved.");
+        flashResult(configResult, "Saved.", "status-confirmed");
         apiKeyInput.value = "";
         await loadConfig();
       } else {
-        flashResult(configResult, `Error: ${body.error}`);
+        flashResult(configResult, `Error: ${body.error}`, "status-error");
       }
     });
   });
 
-  loadAudit();
+  refreshPendingBadge();
   loadConfig();
 });
