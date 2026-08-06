@@ -8,6 +8,7 @@ venv/
 *.db
 *.sqlite3
 audit.jsonl
+audit.eval.jsonl
 .worktrees/
 .superpowers/
 
