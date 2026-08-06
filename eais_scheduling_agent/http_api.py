@@ -68,6 +68,9 @@ from eais_scheduling_agent.intake.llm import LLMIntake, OpenAICompatibleHTTPClie
 from eais_scheduling_agent.intake.offline import OfflineIntake
 
 _CONFIRMED = "CONFIRMED"
+_MISSING_FIELDS_PREFIX = "missing required field(s): "
+_PENDING_APPROVAL = "PENDING_APPROVAL"
+_NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
 
 _SECTORS = ("clinic", "restaurant")
 
@@ -208,7 +211,10 @@ def create_app(
             message = wiring.render_confirmation(skill_pack, booking_request)
             return jsonify({"status": _CONFIRMED, "message": message}), 200
 
-        return jsonify({"status": "PENDING_APPROVAL", "reason": decision.reason}), 200
+        if decision.reason.startswith(_MISSING_FIELDS_PREFIX):
+            return jsonify({"status": _NEEDS_CLARIFICATION, "reason": decision.reason}), 200
+
+        return jsonify({"status": _PENDING_APPROVAL, "reason": decision.reason}), 200
 
     @app.get("/audit")
     def get_audit():

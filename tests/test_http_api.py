@@ -368,3 +368,28 @@ class TestConfigOverrideReachesBookingRequest:
         assert response.status_code == 200
         assert captured["base_url"] == "http://example.invalid/v1"
         assert captured["model"] == "custom-test-model"
+
+
+class TestNeedsClarification:
+    def test_missing_required_field_returns_needs_clarification(self, client):
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "book me in with the doctor tomorrow"},
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["status"] == "NEEDS_CLARIFICATION"
+        assert "missing required field(s):" in body["reason"]
+
+    def test_unknown_practitioner_is_still_pending_approval_not_clarification(self, client):
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "clinic",
+                "text": "Dr. Chen today at 10am, patient John Doe",
+            },
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["status"] == "PENDING_APPROVAL"
+        assert "unknown practitioner" in body["reason"]
