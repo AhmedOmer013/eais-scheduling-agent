@@ -77,11 +77,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--llm",
         action="store_true",
         help=(
-            "Use LLM-backed intake (via a local Ollama server) instead of "
-            "the default deterministic offline parser. Falls back to "
-            "offline intake automatically if the LLM is unreachable or "
-            "unreliable. Opt-in because no local model is guaranteed to be "
-            "running."
+            "Use LLM-backed intake (via any OpenAI-compatible server -- "
+            "local Ollama by default, or a hosted server if "
+            "EAIS_LLM_BASE_URL is set) instead of the default deterministic "
+            "offline parser. Falls back to offline intake automatically if "
+            "the LLM is unreachable or unreliable. Opt-in because no local "
+            "model is guaranteed to be running."
         ),
     )
     parser.add_argument(
@@ -137,7 +138,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     offline = OfflineIntake()
-    real_intake: IntakeService = LLMIntake(fallback=offline) if args.llm else offline
+    real_intake: IntakeService = (
+        LLMIntake(fallback=offline, client=wiring.build_llm_client())
+        if args.llm
+        else offline
+    )
     intake: IntakeService = wiring.CachingIntake(real_intake)
     skill_packs = wiring.build_skill_packs()
 

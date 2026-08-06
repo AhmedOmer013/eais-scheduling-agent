@@ -108,20 +108,39 @@ the decision, and a UTC timestamp.
 
 ### `--llm` mode
 
-`--llm` swaps the offline parser for an LLM-backed one (via a local
-[Ollama](https://ollama.com) server, model `llama3.2` by default). It
-requires a locally running Ollama instance to do anything beyond what
-offline mode already does — **it is not required for the default
-path**, and `--llm` is safe to pass even without Ollama running: on any
-failure (Ollama not running, unreachable, or returning something
-unusable) it automatically and silently falls back to the same offline
-parser used by default, never raising and never blocking. Verified in
-this environment (no Ollama installed here):
+`--llm` swaps the offline parser for an LLM-backed one, talking to any
+OpenAI-compatible API — a local [Ollama](https://ollama.com) server by
+default (model `llama3.2`), or a hosted server (e.g. vLLM) if configured
+-- see "Configuring the LLM backend" below. It requires a reachable LLM
+server to do anything beyond what offline mode already does — **it is
+not required for the default path**, and `--llm` is safe to pass even
+without one running: on any failure (unreachable, timed out, or
+returning something unusable) it automatically and silently falls back
+to the same offline parser used by default, never raising and never
+blocking. Verified in this environment (no local model server running
+here):
 
 ```
 $ python -m eais_scheduling_agent.cli clinic "Dr. A today at 11am, patient Jane Roe" --llm
 Confirmed: Jane Roe with Dr. A at 2026-08-05 11:00:00.
 ```
+
+### Configuring the LLM backend
+
+`--llm` (CLI) and `"llm": true` (HTTP API) both talk to whatever
+OpenAI-compatible server these environment variables point at. Unset,
+they default to a local Ollama server -- set them to reach a different
+local model or a hosted one instead:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EAIS_LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible API root; `/chat/completions` is appended automatically |
+| `EAIS_LLM_MODEL` | `llama3.2` | Model name sent in each request |
+| `EAIS_LLM_API_KEY` | unset | Sent as `Authorization: Bearer <key>` if set; omitted entirely otherwise |
+| `EAIS_LLM_TIMEOUT` | `60.0` | Per-request timeout in seconds |
+
+This is not part of the original assessment brief's scope -- see
+`EXTENSIONS.md`.
 
 ## Run the HTTP API (optional)
 
@@ -201,17 +220,20 @@ Both were run in this worktree; real output:
 ```
 $ python -m pytest
 ...
-============================= 251 passed in 8.01s =============================
+============================ 282 passed in 16.46s =============================
 ```
 
 `pytest`'s configuration (`[tool.pytest.ini_options]` in
 `pyproject.toml`) restricts test collection to `tests/`, in verbose
 mode (`-v`) by default — no extra flags needed. **No network access is
-required**: every test exercises `LLMIntake` (T13) through an injected
-fake HTTP client rather than a real socket (confirmed directly — no test
-file references `urllib`, `socket`, `requests`, or `http.client`; one
-test, `tests/test_offline_intake.py`, explicitly asserts none of those
-modules are imported by the offline path at all).
+required**: no test opens a real network socket. Most tests exercise
+`LLMIntake` (T13) through an injected fake `HTTPClient` callable rather
+than a real one; `OpenAICompatibleHTTPClient`'s own request-building
+logic (`tests/test_llm_intake.py::TestOpenAICompatibleHTTPClient`) is
+instead tested by monkeypatching `urllib.request.urlopen`, which also
+never opens a real socket. Separately, `tests/test_offline_intake.py`
+explicitly asserts that `urllib`, `socket`, `requests`, and
+`http.client` are not imported by the offline path at all.
 
 ## Known gaps
 
@@ -224,11 +246,12 @@ modules are imported by the offline path at all).
   assignment time. Documented as an accepted design trade-off in the
   class's own docstring, not a bug. See `DESIGN.md` §3.
 - **No local LLM runtime is installed in this environment.** `LLMIntake`'s
-  real Ollama-calling code (`OllamaHTTPClient`) is exercised in
-  production but not against a real network call in this environment or
-  CI; its fallback and validation logic are fully tested against
-  injected fakes, and its failure-handling contract is exercised
-  end-to-end (see `--llm` above).
+  real network-calling code (`OpenAICompatibleHTTPClient`) is exercised
+  in production but not against a real network call in this environment
+  or CI; its request-building logic is directly tested via a
+  monkeypatched `urlopen`, its fallback and validation logic are fully
+  tested against injected fakes, and its failure-handling contract is
+  exercised end-to-end (see `--llm` above).
 
 ## Further reading
 

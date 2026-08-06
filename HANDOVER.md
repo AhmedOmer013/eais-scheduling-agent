@@ -11,14 +11,14 @@ zero diffs to `core/`.
 
 ## Current state
 
-All 15 `PLAN.md` tasks are complete and merged to `develop` via reviewed
+All 15 `PLAN.md` tasks are complete, merged to `develop` via reviewed
 PRs. Both sectors run end-to-end through the `eais-book` CLI, in either
-deterministic-offline or LLM-backed (Ollama, with automatic fallback)
-intake mode. An optional HTTP interface (`eais-book-server`) was added
-afterward — same core, same rules, over HTTP instead of a command line.
-It keeps one shared store for its run, so it can catch a conflict across
-two separate requests, unlike two separate CLI calls. 271 tests passing,
-CI-green on Python 3.11/3.12.
+deterministic-offline or LLM-backed (any OpenAI-compatible server, with
+automatic fallback) intake mode. An optional HTTP interface
+(`eais-book-server`) was added afterward — same core and rules, over
+HTTP instead of a command line. It keeps one shared store for its run,
+catching conflicts across requests that two separate CLI calls cannot.
+271 tests passing, CI-green on Python 3.11/3.12.
 
 ## How to run it
 
@@ -35,11 +35,13 @@ walkthrough for both in `README.md`.
   interface calls `slot_rules()` before `check_conflict()`. Documented in
   the class's own docstring as an accepted simplification, not a bug.
 - No local LLM runtime is installed in this environment; `LLMIntake`'s
-  Ollama-calling code path is untested against a real model (its
-  fallback and parsing logic are fully tested against injected fakes).
+  real network-calling code (`OpenAICompatibleHTTPClient`) is untested
+  against a real model here (fallback/parsing logic is tested against
+  injected fakes; request-building logic against a
+  monkeypatched `urlopen`).
 - The HTTP dev server has no concurrency hardening — two simultaneous
-  requests for the same slot may not serialize correctly. Out of scope
-  to fix for this prototype.
+  requests for the same slot may not serialize correctly (out of scope
+  for this prototype).
 
 ## AI-assisted development
 
