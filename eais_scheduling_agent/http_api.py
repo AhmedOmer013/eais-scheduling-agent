@@ -69,6 +69,30 @@ from eais_scheduling_agent.intake.offline import OfflineIntake
 
 _CONFIRMED = "CONFIRMED"
 
+_SECTORS = ("clinic", "restaurant")
+
+
+def _sector_audit_path(base: Path, sector: str) -> Path:
+    """Derive a per-sector audit file path from the base `audit_file`.
+
+    `audit.jsonl` -> `audit.clinic.jsonl`. A base with no suffix (e.g.
+    `audit`) becomes `audit.clinic` -- still unambiguous, just without an
+    extension. Keeps `create_app(audit_file=...)`'s existing single-path
+    argument working unchanged (see tests/test_http_api.py's `client`
+    fixture) while giving each sector a genuinely separate file.
+    """
+    return base.with_name(f"{base.stem}.{sector}{base.suffix}")
+
+
+def _read_audit_records(path: Path) -> list:
+    if not path.is_file():
+        return []
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            records.append(json.loads(line))
+    return records
+
 
 class _RuntimeLLMConfig:
     """In-memory override for the LLM backend config, settable via
@@ -114,7 +138,11 @@ def create_app(
     skill_packs = wiring.build_skill_packs()
     gate = StandardApprovalGate()
     store = InMemoryBookingStore()
-    audit = JsonLinesAuditTrail(path=audit_file)
+    audit_base = Path(audit_file)
+    audit_by_sector = {
+        sector: JsonLinesAuditTrail(path=str(_sector_audit_path(audit_base, sector)))
+        for sector in _SECTORS
+    }
     runtime_config = _RuntimeLLMConfig()
 
     @app.get("/")
@@ -159,7 +187,7 @@ def create_app(
             intake=intake,
             gate=gate,
             store=store,
-            audit=audit,
+            audit=audit_by_sector.get(sector, audit_by_sector["clinic"]),
         )
 
         try:
@@ -184,19 +212,18 @@ def create_app(
 
     @app.get("/audit")
     def get_audit():
-        # Reads the whole audit file from disk on every call -- no
-        # pagination, no auth. `audit_file` is shared with the CLI's
-        # default output file and persists across server restarts, so
-        # this can surface records from previous server runs and from
-        # separate `eais-book` CLI invocations, even though the
-        # in-memory `store` above resets on every restart -- i.e. this
-        # can list CONFIRMED bookings `store` itself has no memory of.
-        path = Path(audit_file)
-        records = []
-        if path.is_file():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    records.append(json.loads(line))
+        sector = request.args.get("sector")
+        if sector is not None and sector not in _SECTORS:
+            return jsonify({"error": f"unknown sector: {sector!r}"}), 400
+
+        if sector is not None:
+            records = _read_audit_records(_sector_audit_path(audit_base, sector))
+        else:
+            records = []
+            for s in _SECTORS:
+                records.extend(_read_audit_records(_sector_audit_path(audit_base, s)))
+            records.sort(key=lambda r: r["timestamp"])
+
         return jsonify({"records": records}), 200
 
     @app.get("/config")

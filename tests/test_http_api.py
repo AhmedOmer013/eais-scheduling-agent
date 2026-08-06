@@ -279,6 +279,66 @@ class TestDashboardPage:
         assert 'id="config-form"' in html
 
 
+class TestPerSectorAuditFiles:
+    def test_sector_filter_returns_only_that_sectors_records(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm, customer Jane Smith"},
+        )
+
+        clinic_response = client.get("/audit?sector=clinic")
+        restaurant_response = client.get("/audit?sector=restaurant")
+
+        clinic_records = clinic_response.get_json()["records"]
+        restaurant_records = restaurant_response.get_json()["records"]
+        assert len(clinic_records) == 1
+        assert "John Doe" in clinic_records[0]["input"]
+        assert len(restaurant_records) == 1
+        assert "Jane Smith" in restaurant_records[0]["input"]
+
+    def test_unknown_sector_returns_400(self, client):
+        response = client.get("/audit?sector=veterinary")
+        assert response.status_code == 400
+
+    def test_records_are_actually_in_separate_files_on_disk(self, tmp_path):
+        audit_path = tmp_path / "audit.jsonl"
+        app = create_app(audit_file=str(audit_path))
+        app.testing = True
+        test_client = app.test_client()
+
+        test_client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        assert (tmp_path / "audit.clinic.jsonl").is_file()
+        assert not (tmp_path / "audit.restaurant.jsonl").is_file()
+
+    def test_no_sector_param_still_returns_merged_chronological_list(self, client):
+        # Backward compatibility: this is the existing
+        # TestAuditEndpoint::test_returns_one_record_per_request behavior,
+        # re-asserted here as a named regression guard for the sector split.
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm, customer Jane Smith"},
+        )
+
+        response = client.get("/audit")
+        records = response.get_json()["records"]
+
+        assert len(records) == 2
+        assert records[0]["input"] == "Dr. A today at 10am, patient John Doe"
+        assert records[1]["input"] == "table for 4 today at 6pm, customer Jane Smith"
+
+
 class TestConfigOverrideReachesBookingRequest:
     def test_post_config_changes_the_client_used_by_llm_bookings(self, client, monkeypatch):
         captured = {}
