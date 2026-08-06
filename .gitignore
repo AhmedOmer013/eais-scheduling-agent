@@ -8,6 +8,9 @@ venv/
 *.db
 *.sqlite3
 audit.jsonl
+audit.clinic.jsonl
+audit.restaurant.jsonl
+pending_requests.json
 .worktrees/
 .superpowers/
 
