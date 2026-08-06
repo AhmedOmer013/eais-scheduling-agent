@@ -168,6 +168,16 @@ class RestaurantSkillPack(SkillPack):
         """
         return dict(self._working_hours)
 
+    @property
+    def tables(self) -> Dict[str, int]:
+        """The restaurant's configured table -> seat capacity mapping.
+
+        Returns a copy of the ``{table_id: capacity}`` dict as configured
+        (or the default) -- mirrors `working_hours`'s read-only,
+        defensive-copy convention.
+        """
+        return dict(self._tables)
+
     def _extract_fields(self, request: BookingRequest):
         """Pull the two fields this pack needs, or raise a clear KeyError.
 

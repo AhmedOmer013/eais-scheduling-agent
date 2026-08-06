@@ -49,6 +49,19 @@ class TestRequiredFieldsAndWorkingHours:
         pack = RestaurantSkillPack(working_hours={"open": "17:00", "close": "23:00"})
         assert pack.working_hours == {"open": "17:00", "close": "23:00"}
 
+    def test_tables_default(self):
+        pack = RestaurantSkillPack()
+        assert pack.tables == {"T1": 2, "T2": 2, "T3": 4, "T4": 6, "T5": 8}
+
+    def test_tables_configurable(self):
+        pack = RestaurantSkillPack(tables={"A1": 10})
+        assert pack.tables == {"A1": 10}
+
+    def test_tables_returns_a_copy_not_the_internal_dict(self):
+        pack = RestaurantSkillPack()
+        pack.tables["Z9"] = 99
+        assert "Z9" not in pack.tables
+
 
 class TestSlotRulesTableAssignment:
     """slot_rules() picks the smallest-fitting table, deterministically."""

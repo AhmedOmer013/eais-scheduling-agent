@@ -139,6 +139,16 @@ class ClinicSkillPack(SkillPack):
         """
         return dict(self._working_hours)
 
+    @property
+    def practitioners(self) -> Dict[str, int]:
+        """The clinic's configured practitioner -> fixed appointment length (minutes) mapping.
+
+        Returns a copy of the ``{practitioner_name: duration_minutes}``
+        dict as configured (or the default) -- mirrors `working_hours`'s
+        read-only, defensive-copy convention.
+        """
+        return dict(self._practitioners)
+
     def _extract_fields(self, request: BookingRequest):
         """Pull the three fields this pack needs, or raise a clear KeyError.
 

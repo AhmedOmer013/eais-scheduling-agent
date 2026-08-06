@@ -49,6 +49,19 @@ class TestRequiredFieldsAndWorkingHours:
         pack = ClinicSkillPack(working_hours={"open": "08:00", "close": "12:00"})
         assert pack.working_hours == {"open": "08:00", "close": "12:00"}
 
+    def test_practitioners_default(self):
+        pack = ClinicSkillPack()
+        assert pack.practitioners == {"Dr. A": 30, "Dr. B": 20}
+
+    def test_practitioners_configurable(self):
+        pack = ClinicSkillPack(practitioners={"Dr. X": 45})
+        assert pack.practitioners == {"Dr. X": 45}
+
+    def test_practitioners_returns_a_copy_not_the_internal_dict(self):
+        pack = ClinicSkillPack()
+        pack.practitioners["Dr. Z"] = 99
+        assert "Dr. Z" not in pack.practitioners
+
 
 class TestSlotRules:
     def test_slot_rules_returns_practitioners_fixed_duration(self):
