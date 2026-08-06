@@ -23,15 +23,19 @@ Why this module can never be a single point of failure:
 
 Two independently swappable layers:
 
-    1. **The HTTP client** (`HTTPClient` / `OllamaHTTPClient`) -- the only
-       part of this module that touches the network. `LLMIntake` accepts
-       any zero-state callable `str -> str` (prompt in, model's raw text
-       out) via its `client` constructor argument, defaulting to a real
-       `OllamaHTTPClient` that POSTs to Ollama's `/api/generate` endpoint
-       using stdlib `urllib.request` -- no new dependency. Tests inject a
-       fake callable instead; see `tests/test_llm_intake.py`. This is what
-       makes "zero real network calls in tests" possible without a mocking
-       framework: dependency injection, not patching.
+    1. **The HTTP client** (`HTTPClient` / `OpenAICompatibleHTTPClient`) --
+       the only part of this module that touches the network. `LLMIntake`
+       accepts any zero-state callable `str -> str` (prompt in, model's
+       raw text out) via its `client` constructor argument.
+       `OpenAICompatibleHTTPClient` is the real implementation, speaking
+       the OpenAI-compatible `/chat/completions` shape that both a local
+       Ollama server and a hosted vLLM server understand -- which backend
+       it talks to is purely a matter of which `base_url`/`model`/`api_key`
+       it was constructed with (see `wiring.build_llm_client`), never a
+       code difference. Tests inject a fake callable instead; see
+       `tests/test_llm_intake.py`. This is what makes "zero real network
+       calls in tests" possible without a mocking framework: dependency
+       injection, not patching.
     2. **Response validation** (`_parse_and_validate`) -- independent of
        the client. Given the client's raw text, this parses it as JSON and
        validates each field's type against a per-sector schema, dropping
@@ -68,43 +72,56 @@ from eais_scheduling_agent.core.models import BookingRequest
 HTTPClient = Callable[[str], str]
 
 
-class OllamaHTTPClient:
-    """Real `HTTPClient`: POSTs to a local Ollama server's `/api/generate`.
+class OpenAICompatibleHTTPClient:
+    """Real `HTTPClient`: POSTs to any OpenAI-compatible `/chat/completions` endpoint.
 
-    Uses stdlib `urllib.request` only -- no `requests` dependency, per the
-    brief. Requests `"format": "json"` (an Ollama feature that constrains
-    the model's own sampling to valid JSON) as a best-effort nudge, but
-    `LLMIntake` does not rely on the model honoring it; validation happens
-    independently either way.
+    Both a local Ollama server (recent versions expose an OpenAI-compatible
+    API alongside their native one) and a hosted vLLM server serving a
+    larger model use this same request/response shape -- "local" and
+    "hosted" are the same code path here, differing only in which
+    `base_url` / `model` / `api_key` are configured. See
+    `wiring.build_llm_client`, the one place those are read from the
+    environment.
+
+    Uses stdlib `urllib.request` only -- no new dependency, same precedent
+    as the client this replaces.
 
     Never constructed directly by tests -- tests inject their own fake
-    `HTTPClient` callable instead, so this class's networking code never
-    runs during the test suite.
+    `HTTPClient` callable, or monkeypatch `urllib.request.urlopen` to test
+    this class's own request-building logic without a real socket. See
+    `tests/test_llm_intake.py::TestOpenAICompatibleHTTPClient`.
     """
 
     def __init__(
         self,
-        model: str = "llama3.2",
-        base_url: str = "http://localhost:11434",
-        timeout: float = 10.0,
+        base_url: str,
+        model: str,
+        api_key: Optional[str] = None,
+        timeout: float = 60.0,
     ) -> None:
+        self._url = base_url.rstrip("/") + "/chat/completions"
         self._model = model
-        self._url = base_url.rstrip("/") + "/api/generate"
+        self._api_key = api_key
         self._timeout = timeout
 
     def __call__(self, prompt: str) -> str:
         payload = json.dumps(
             {
                 "model": self._model,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",
+                "messages": [{"role": "user", "content": prompt}],
+                # Best-effort hint, same as the native client's "format":
+                # "json" -- not relied upon; `_parse_and_validate` below
+                # validates independently either way.
+                "response_format": {"type": "json_object"},
             }
         ).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self._api_key is not None:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         request = urllib.request.Request(
             self._url,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             method="POST",
         )
         # Any failure here (connection refused, DNS failure, timeout, a
@@ -114,7 +131,7 @@ class OllamaHTTPClient:
         with urllib.request.urlopen(request, timeout=self._timeout) as response:
             body = response.read().decode("utf-8")
         envelope = json.loads(body)
-        return envelope["response"]
+        return envelope["choices"][0]["message"]["content"]
 
 
 # ---------------------------------------------------------------------------
@@ -340,31 +357,21 @@ class LLMIntake(IntakeService):
             an `OfflineIntake` instance, though nothing here depends on
             that concretely; any `IntakeService` works. T14's job, not
             this module's, is to actually construct and wire one in.
-        client: Injectable `HTTPClient` (prompt string in, model's raw
-            text response out; may raise on failure). Defaults to a real
-            `OllamaHTTPClient`. Tests always pass their own fake callable
-            here so no test touches a real network -- see
+        client: `HTTPClient` (prompt string in, model's raw text response
+            out; may raise on failure). Required -- production code
+            builds one explicitly via `wiring.build_llm_client()` (see
+            `cli.py`/`http_api.py`); tests always pass their own fake
+            callable so no test touches a real network -- see
             `tests/test_llm_intake.py`.
-        model: Ollama model name, used only when `client` is not supplied
-            (it configures the default `OllamaHTTPClient`).
-        base_url: Ollama server base URL, same caveat as `model`.
-        timeout: Per-request timeout in seconds, same caveat as `model`.
     """
 
     def __init__(
         self,
         fallback: IntakeService,
-        client: Optional[HTTPClient] = None,
-        model: str = "llama3.2",
-        base_url: str = "http://localhost:11434",
-        timeout: float = 10.0,
+        client: HTTPClient,
     ) -> None:
         self._fallback = fallback
-        self._client: HTTPClient = (
-            client
-            if client is not None
-            else OllamaHTTPClient(model=model, base_url=base_url, timeout=timeout)
-        )
+        self._client = client
 
     def parse(self, text: str, sector: str) -> BookingRequest:
         """Extract a `BookingRequest` via the LLM, falling back on failure.

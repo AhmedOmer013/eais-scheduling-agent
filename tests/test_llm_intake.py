@@ -5,8 +5,10 @@ constructor -- a plain Python function or small class defined right here in
 the test file. None of them touch a real socket, `urllib`, or Ollama: per
 the T13 brief, this environment (and CI) has no LLM runtime installed, and
 the whole point of the injectable-client design in `intake/llm.py` is that
-the test suite never needs one. `OllamaHTTPClient` (the real implementation)
-is never constructed anywhere in this file.
+the test suite never needs one. `OpenAICompatibleHTTPClient` (the real
+implementation) is constructed directly in `TestOpenAICompatibleHTTPClient`
+below, but every one of those tests monkeypatches `urllib.request.urlopen`
+first -- no test in this file ever opens a real socket.
 
 Covers, per the brief's list:
     1. Well-formed response, all fields correct -> parsed, fallback untouched.
@@ -25,13 +27,128 @@ Covers, per the brief's list:
 """
 
 import json
+import urllib.request
 from datetime import datetime
 
 import pytest
 
 from eais_scheduling_agent.core.interfaces import IntakeService
 from eais_scheduling_agent.core.models import BookingRequest
-from eais_scheduling_agent.intake.llm import LLMIntake, _build_prompt
+from eais_scheduling_agent.intake.llm import LLMIntake, OpenAICompatibleHTTPClient, _build_prompt
+
+
+class _FakeHTTPResponse:
+    """Minimal stand-in for the context-manager object `urlopen()` returns."""
+
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+class TestOpenAICompatibleHTTPClient:
+    """Tests the real HTTPClient implementation directly, via a monkeypatched
+    `urllib.request.urlopen` -- no real socket, loopback or otherwise, per
+    this plan's Global Constraints.
+    """
+
+    def test_posts_to_chat_completions_with_messages_shape(self, monkeypatch):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            captured["method"] = request.get_method()
+            captured["body"] = json.loads(request.data)
+            captured["timeout"] = timeout
+            return _FakeHTTPResponse(
+                json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        client = OpenAICompatibleHTTPClient(
+            base_url="http://example.invalid/v1", model="test-model", timeout=42.0
+        )
+
+        client("some prompt")
+
+        assert captured["url"] == "http://example.invalid/v1/chat/completions"
+        assert captured["method"] == "POST"
+        assert captured["body"]["model"] == "test-model"
+        assert captured["body"]["messages"] == [{"role": "user", "content": "some prompt"}]
+        assert captured["body"]["response_format"] == {"type": "json_object"}
+        assert captured["timeout"] == 42.0
+
+    def test_extracts_content_from_choices_message(self, monkeypatch):
+        def fake_urlopen(request, timeout):
+            return _FakeHTTPResponse(
+                json.dumps(
+                    {"choices": [{"message": {"content": '{"practitioner": "Dr. A"}'}}]}
+                ).encode("utf-8")
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        client = OpenAICompatibleHTTPClient(base_url="http://example.invalid/v1", model="m")
+
+        result = client("prompt")
+
+        assert result == '{"practitioner": "Dr. A"}'
+
+    def test_no_authorization_header_when_api_key_not_given(self, monkeypatch):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["authorization"] = request.get_header("Authorization")
+            return _FakeHTTPResponse(
+                json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        client = OpenAICompatibleHTTPClient(base_url="http://example.invalid/v1", model="m")
+
+        client("prompt")
+
+        assert captured["authorization"] is None
+
+    def test_authorization_bearer_header_when_api_key_given(self, monkeypatch):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["authorization"] = request.get_header("Authorization")
+            return _FakeHTTPResponse(
+                json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        client = OpenAICompatibleHTTPClient(
+            base_url="http://example.invalid/v1", model="m", api_key="secret-key"
+        )
+
+        client("prompt")
+
+        assert captured["authorization"] == "Bearer secret-key"
+
+    def test_trailing_slash_on_base_url_does_not_double_up(self, monkeypatch):
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            return _FakeHTTPResponse(
+                json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        client = OpenAICompatibleHTTPClient(base_url="http://example.invalid/v1/", model="m")
+
+        client("prompt")
+
+        assert captured["url"] == "http://example.invalid/v1/chat/completions"
 
 
 class _FakeClient:
