@@ -2,6 +2,7 @@
 cli.py and http_api.py -- see docs/superpowers/specs/2026-08-05-http-interface-design.md).
 """
 
+import os
 from datetime import datetime
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from eais_scheduling_agent import wiring
 from eais_scheduling_agent.core.interfaces import IntakeService
 from eais_scheduling_agent.core.models import BookingRequest
+from eais_scheduling_agent.intake.llm import OpenAICompatibleHTTPClient
 from eais_scheduling_agent.manifests.manifest import ManifestValidationError
 from eais_scheduling_agent.skillpacks.clinic import ClinicSkillPack
 from eais_scheduling_agent.skillpacks.restaurant import RestaurantSkillPack
@@ -77,3 +79,59 @@ class TestCachingIntake:
         caching.parse("text b", "clinic")
 
         assert inner.calls == 2
+
+
+class TestBuildLLMClient:
+    def test_defaults_when_no_env_vars_set(self, monkeypatch):
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
+        client = wiring.build_llm_client()
+
+        assert isinstance(client, OpenAICompatibleHTTPClient)
+        assert client._url == "http://localhost:11434/v1/chat/completions"
+        assert client._model == "llama3.2"
+        assert client._api_key is None
+        assert client._timeout == 60.0
+
+    def test_reads_base_url_override(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_BASE_URL", "http://100.64.0.5:8000/v1")
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
+        client = wiring.build_llm_client()
+
+        assert client._url == "http://100.64.0.5:8000/v1/chat/completions"
+
+    def test_reads_model_override(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
+        client = wiring.build_llm_client()
+
+        assert client._model == "Qwen/Qwen2.5-72B-Instruct"
+
+    def test_reads_api_key_override(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_API_KEY", "secret-key")
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
+        client = wiring.build_llm_client()
+
+        assert client._api_key == "secret-key"
+
+    def test_reads_timeout_override_as_float(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_TIMEOUT", "120")
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+
+        client = wiring.build_llm_client()
+
+        assert client._timeout == 120.0
