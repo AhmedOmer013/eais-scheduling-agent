@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EAIS Scheduling Agent</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h1>EAIS Scheduling Agent</h1>
+
+  <section id="booking-section">
+    <h2>Make a booking</h2>
+    <form id="booking-form">
+      <label for="sector">Sector</label>
+      <select id="sector" name="sector">
+        <option value="clinic">Clinic</option>
+        <option value="restaurant">Restaurant</option>
+      </select>
+
+      <label for="text">Request</label>
+      <textarea id="text" name="text" rows="3" placeholder="Dr. A today at 10am, patient John Doe"></textarea>
+
+      <label><input type="checkbox" id="use-llm" name="llm"> Use LLM intake</label>
+
+      <button type="submit">Book</button>
+    </form>
+    <div id="booking-result"></div>
+  </section>
+
+  <section id="audit-section">
+    <h2>Audit trail</h2>
+    <button type="button" id="refresh-audit">Refresh</button>
+    <table id="audit-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Sector</th>
+          <th>Input</th>
+          <th>Decision</th>
+        </tr>
+      </thead>
+      <tbody id="audit-body"></tbody>
+    </table>
+  </section>
+
+  <section id="config-section">
+    <h2>Model config</h2>
+    <form id="config-form">
+      <label for="base-url">Base URL</label>
+      <input type="text" id="base-url" name="base_url">
+
+      <label for="model">Model</label>
+      <input type="text" id="model" name="model">
+
+      <label for="api-key">API key</label>
+      <input type="password" id="api-key" name="api_key">
+      <span id="api-key-hint"></span>
+
+      <label for="timeout">Timeout (seconds)</label>
+      <input type="number" id="timeout" name="timeout" step="0.1">
+
+      <button type="submit">Save</button>
+    </form>
+    <div id="config-result"></div>
+  </section>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+
+  <footer>
+    <p>Local prototype, no authentication. Not part of the EAIS-HR-2159-TA-01 assessment submission -- see EXTENSIONS.md.</p>
+  </footer>
+</body>
+</html>

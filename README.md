@@ -201,6 +201,18 @@ This reasoning assumes single-request-at-a-time handling; the dev server
 runs threaded by default and the store has no internal locking, so two
 truly concurrent requests are not guaranteed to serialize correctly.
 
+## Web dashboard (optional)
+
+With the server running (see above), open `http://127.0.0.1:5000/` in a
+browser for a simple dashboard: make a booking, view the audit trail, and
+view/change the LLM backend config for the running server.
+
+- `GET /config` / `POST /config` -- view or change `base_url`/`model`/
+  `api_key`/`timeout` at runtime, without restarting the server. The API
+  key is never sent back to the browser as its raw value, only whether
+  one is currently set (`api_key_set: true`/`false`).
+- Not part of the assessment brief's scope -- see `EXTENSIONS.md`.
+
 ## Run tests
 
 ```

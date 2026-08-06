@@ -40,7 +40,7 @@ eais-book-server = "eais_scheduling_agent.http_api:run"
 packages = ["eais_scheduling_agent", "eais_scheduling_agent.core", "eais_scheduling_agent.manifests", "eais_scheduling_agent.skillpacks", "eais_scheduling_agent.skillpacks.clinic", "eais_scheduling_agent.skillpacks.restaurant", "eais_scheduling_agent.intake"]
 
 [tool.setuptools.package-data]
-eais_scheduling_agent = ["manifests/**/*.yaml", "manifests/**/*.json"]
+eais_scheduling_agent = ["manifests/**/*.yaml", "manifests/**/*.json", "templates/*.html", "static/*.js", "static/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

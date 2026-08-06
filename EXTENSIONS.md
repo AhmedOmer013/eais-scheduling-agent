@@ -26,7 +26,9 @@ separated file.
 `LLMIntake`'s HTTP client (`eais_scheduling_agent/intake/llm.py`) now
 speaks a generic OpenAI-compatible `/chat/completions` API instead of
 being hardcoded to a local Ollama server. Configured via four environment
-variables, read in one place (`wiring.build_llm_client()`):
+variables, read in one place (`wiring.resolve_llm_config()`). The web
+dashboard (§2 below) can layer a runtime override on top of these for the
+running server process, without touching the environment itself.
 
 - `EAIS_LLM_BASE_URL` (default: `http://localhost:11434/v1`)
 - `EAIS_LLM_MODEL` (default: `llama3.2`)
@@ -45,13 +47,39 @@ with no TLS enforcement and no redirect protection -- treat
 untrusted or redirect-capable proxy. Full production hardening here is
 explicitly out of scope for this prototype (see the top of this file).
 
-### 2. Web UI *(planned, not yet built)*
+### 2. Web UI
 
-A browser-based front end for making booking requests, built on top of
-the existing `POST /bookings` / `GET /audit` HTTP API
-(`eais_scheduling_agent/http_api.py`). Will get its own design spec and
-plan before implementation, same as everything else in this repo.
+A single-page, server-rendered dashboard (`GET /`,
+`eais_scheduling_agent/templates/dashboard.html`) with three panels:
+making a booking, viewing the audit trail, and viewing/changing the LLM
+backend config at runtime. Plain HTML/CSS/JS -- no build step, no JS
+framework -- served by the same Flask app as the JSON HTTP API.
+
+Model config is read-write: `GET /config` / `POST /config` let you view
+and change `base_url`/`model`/`api_key`/`timeout` for the running server
+process, taking effect on the very next booking request (no restart).
+The API key is never returned to the browser as its raw value -- only
+whether one is set. No authentication, consistent with every other
+endpoint in this project.
+
+Known limitation: because `POST /config` is unauthenticated (like every
+other endpoint here) and can change `base_url`, anyone who can reach the
+server's port can redirect LLM traffic -- and any `EAIS_LLM_API_KEY` set
+in the environment will then be sent as a bearer token to that new
+destination. The dev server binds to `127.0.0.1` only, containing this to
+local access; a network-exposed deployment would need authentication
+before this endpoint is safe. Separately: `POST /config` and
+`POST /bookings` have no CSRF token. Today a cross-origin browser request
+can't reach them in practice, because Flask's JSON-only body parsing
+rejects the simple content types a plain HTML form can send, and a
+cross-origin `fetch()` with a JSON content type triggers a CORS preflight
+nothing here answers -- but this is an incidental side effect of
+JSON-only parsing, not a deliberate control, and must not be relied on if
+these endpoints' accepted content types ever widen.
+
+See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the full
+design rationale.
 
 ### 3. Playwright end-to-end tests *(planned, not yet built)*
 
-Drives the web UI above through a real browser once it exists.
+Drives the web UI above through a real browser.
