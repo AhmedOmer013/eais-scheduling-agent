@@ -32,11 +32,14 @@
 - `tests/test_pending.py` — its tests
 
 **Modified:**
-- `eais_scheduling_agent/http_api.py` — sector-keyed audit, `PendingRequestStore` wiring, `NEEDS_CLARIFICATION` classification, `GET/POST /pending`, `GET /audit?sector=`
+- `eais_scheduling_agent/http_api.py` — sector-keyed audit, `PendingRequestStore` wiring, `NEEDS_CLARIFICATION` classification, `GET/POST /pending`, `GET /audit?sector=`, `GET/POST /config/clinic`, `GET/POST /config/restaurant`
 - `tests/test_http_api.py` — new test classes appended (existing tests untouched)
-- `eais_scheduling_agent/templates/dashboard.html` — full rewrite (tab bar)
-- `eais_scheduling_agent/static/style.css` — full rewrite (Warm Neutral palette)
-- `eais_scheduling_agent/static/app.js` — full rewrite (tab switching, pending queue, split audit, config)
+- `eais_scheduling_agent/skillpacks/clinic/pack.py` — add a read-only `practitioners` property
+- `eais_scheduling_agent/skillpacks/restaurant/pack.py` — add a read-only `tables` property
+- `tests/test_clinic_skillpack.py` / `tests/test_restaurant_skillpack.py` — new tests appended
+- `eais_scheduling_agent/templates/dashboard.html` — full rewrite (tab bar, slot-rules sections)
+- `eais_scheduling_agent/static/style.css` — full rewrite (Warm Neutral palette, slot-rules styling)
+- `eais_scheduling_agent/static/app.js` — full rewrite (tab switching, pending queue, split audit, config, slot-rules read/edit)
 - `.gitignore` — add the two derived per-sector audit filenames
 - `EXTENSIONS.md` — document this as an update to extension #2
 - `README.md` — update the "Web dashboard" section
@@ -951,14 +954,342 @@ git commit -m "Gitignore the new per-sector audit files and pending-request queu
 
 ---
 
-### Task 7: Dashboard structure & style — tab bar, Warm Neutral palette
+### Task 7: Slot-rules config — read/edit practitioners, tables, and working hours
+
+**Files:**
+- Modify: `eais_scheduling_agent/skillpacks/clinic/pack.py` (add one read-only property)
+- Modify: `eais_scheduling_agent/skillpacks/restaurant/pack.py` (add one read-only property)
+- Modify: `eais_scheduling_agent/http_api.py` (two new import lines, four new endpoints)
+- Test: `tests/test_clinic_skillpack.py`, `tests/test_restaurant_skillpack.py`, `tests/test_http_api.py`
+
+**Context:** Added at Ahmed's explicit request, alongside the accept/reject queue work — a way to see and edit each sector's slot rules (clinic: which practitioners exist and their appointment duration; restaurant: which tables exist and their seat capacity; both: working hours) from the dashboard, shown alongside that sector's audit trail. Still no authentication, matching every other endpoint.
+
+`ClinicSkillPack` and `RestaurantSkillPack` are otherwise immutable after construction (config is parsed once in `__init__`) — rather than adding mutation methods to those classes, this task adds one read-only property each (mirroring the existing `working_hours` property exactly), and does all *mutation* at the `http_api.py` layer by constructing a **new** skill pack instance with merged config and replacing the entry in the `skill_packs` dict `create_app()` already holds for the server's lifetime. This keeps every parsing/validation rule (e.g. `"HH:MM"` format checking) inside the already-tested skill pack constructors — `http_api.py` only orchestrates "merge, construct, swap, or reject with 400."
+
+**Interfaces:**
+- Produces on `ClinicSkillPack`: `practitioners` property, returns `Dict[str, int]` (a copy).
+- Produces on `RestaurantSkillPack`: `tables` property, returns `Dict[str, int]` (a copy).
+- Produces on `http_api.py`: `GET /config/clinic` -> `{"practitioners": {...}, "working_hours": {...}}`; `POST /config/clinic` (body: `{"practitioners": {...}}` and/or `{"working_hours": {...}}`, both optional) -> same shape, 200, or `{"error": "..."}`, 400. Same shape for `/config/restaurant` with `"tables"` instead of `"practitioners"`.
+- Consumes: `wiring.build_skill_packs()`'s `skill_packs` dict (already built once in `create_app()`, mutated in place by these endpoints — every other endpoint that does `skill_packs[...]` lookups, e.g. `accept_pending` from Task 5, sees the update on its next call, since it's the same dict object).
+
+- [ ] **Step 1: Write the failing tests for the skill pack properties**
+
+Add to `tests/test_clinic_skillpack.py`, near the existing `test_working_hours_default`/`test_working_hours_configurable` tests:
+
+```python
+    def test_practitioners_default(self):
+        pack = ClinicSkillPack()
+        assert pack.practitioners == {"Dr. A": 30, "Dr. B": 20}
+
+    def test_practitioners_configurable(self):
+        pack = ClinicSkillPack(practitioners={"Dr. X": 45})
+        assert pack.practitioners == {"Dr. X": 45}
+
+    def test_practitioners_returns_a_copy_not_the_internal_dict(self):
+        pack = ClinicSkillPack()
+        pack.practitioners["Dr. Z"] = 99
+        assert "Dr. Z" not in pack.practitioners
+```
+
+Add to `tests/test_restaurant_skillpack.py`, near the existing working-hours tests:
+
+```python
+    def test_tables_default(self):
+        pack = RestaurantSkillPack()
+        assert pack.tables == {"T1": 2, "T2": 2, "T3": 4, "T4": 6, "T5": 8}
+
+    def test_tables_configurable(self):
+        pack = RestaurantSkillPack(tables={"A1": 10})
+        assert pack.tables == {"A1": 10}
+
+    def test_tables_returns_a_copy_not_the_internal_dict(self):
+        pack = RestaurantSkillPack()
+        pack.tables["Z9"] = 99
+        assert "Z9" not in pack.tables
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `python -m pytest tests/test_clinic_skillpack.py tests/test_restaurant_skillpack.py -v`
+Expected: FAIL with `AttributeError: 'ClinicSkillPack' object has no attribute 'practitioners'` (and the equivalent for `tables`).
+
+- [ ] **Step 3: Add the properties**
+
+In `eais_scheduling_agent/skillpacks/clinic/pack.py`, immediately after the existing `working_hours` property:
+
+```python
+    @property
+    def practitioners(self) -> Dict[str, int]:
+        """The clinic's configured practitioner -> fixed appointment length (minutes) mapping.
+
+        Returns a copy of the ``{practitioner_name: duration_minutes}``
+        dict as configured (or the default) -- mirrors `working_hours`'s
+        read-only, defensive-copy convention.
+        """
+        return dict(self._practitioners)
+```
+
+In `eais_scheduling_agent/skillpacks/restaurant/pack.py`, immediately after the existing `working_hours` property:
+
+```python
+    @property
+    def tables(self) -> Dict[str, int]:
+        """The restaurant's configured table -> seat capacity mapping.
+
+        Returns a copy of the ``{table_id: capacity}`` dict as configured
+        (or the default) -- mirrors `working_hours`'s read-only,
+        defensive-copy convention.
+        """
+        return dict(self._tables)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `python -m pytest tests/test_clinic_skillpack.py tests/test_restaurant_skillpack.py -v`
+Expected: All PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add eais_scheduling_agent/skillpacks/clinic/pack.py eais_scheduling_agent/skillpacks/restaurant/pack.py tests/test_clinic_skillpack.py tests/test_restaurant_skillpack.py
+git commit -m "Add read-only practitioners/tables properties to the clinic and restaurant skill packs"
+```
+
+- [ ] **Step 6: Write the failing tests for the config endpoints**
+
+Append to `tests/test_http_api.py`:
+
+```python
+class TestClinicConfigEndpoint:
+    def test_get_returns_current_practitioners_and_hours(self, client):
+        response = client.get("/config/clinic")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+        assert body["working_hours"] == {"open": "09:00", "close": "17:00"}
+
+    def test_post_adds_a_new_practitioner(self, client):
+        response = client.post("/config/clinic", json={"practitioners": {"Dr. C": 25}})
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["practitioners"] == {"Dr. A": 30, "Dr. B": 20, "Dr. C": 25}
+
+    def test_post_changes_an_existing_practitioners_duration(self, client):
+        client.post("/config/clinic", json={"practitioners": {"Dr. A": 45}})
+        response = client.get("/config/clinic")
+        assert response.get_json()["practitioners"]["Dr. A"] == 45
+
+    def test_post_new_practitioner_is_immediately_bookable(self, client):
+        client.post("/config/clinic", json={"practitioners": {"Dr. C": 25}})
+
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. C today at 10am, patient John Doe"},
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+
+    def test_post_changes_working_hours(self, client):
+        response = client.post(
+            "/config/clinic", json={"working_hours": {"open": "08:00", "close": "12:00"}}
+        )
+        assert response.status_code == 200
+        assert response.get_json()["working_hours"] == {"open": "08:00", "close": "12:00"}
+
+    def test_post_rejects_non_object_body(self, client):
+        response = client.post("/config/clinic", json="not an object")
+        assert response.status_code == 400
+
+    def test_post_rejects_non_dict_practitioners(self, client):
+        response = client.post("/config/clinic", json={"practitioners": "Dr. C"})
+        assert response.status_code == 400
+
+    def test_post_rejects_non_positive_duration(self, client):
+        response = client.post("/config/clinic", json={"practitioners": {"Dr. C": 0}})
+        assert response.status_code == 400
+
+    def test_post_with_empty_practitioners_object_is_a_no_op_merge(self, client):
+        # Merge semantics (see Step 8): {} has nothing to update, so the
+        # current config comes back unchanged -- not an error, since {}
+        # is a valid "no additions" request, not an attempt to empty it.
+        response = client.post("/config/clinic", json={"practitioners": {}})
+        assert response.status_code == 200
+        assert response.get_json()["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+
+    def test_post_rejects_malformed_working_hours(self, client):
+        response = client.post(
+            "/config/clinic", json={"working_hours": {"open": "not-a-time", "close": "17:00"}}
+        )
+        assert response.status_code == 400
+
+
+class TestRestaurantConfigEndpoint:
+    def test_get_returns_current_tables_and_hours(self, client):
+        response = client.get("/config/restaurant")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["tables"] == {"T1": 2, "T2": 2, "T3": 4, "T4": 6, "T5": 8}
+        assert body["working_hours"] == {"open": "11:00", "close": "22:00"}
+
+    def test_post_adds_a_new_table(self, client):
+        response = client.post("/config/restaurant", json={"tables": {"T6": 12}})
+        assert response.status_code == 200
+        assert response.get_json()["tables"]["T6"] == 12
+
+    def test_post_new_table_is_immediately_bookable(self, client):
+        client.post("/config/restaurant", json={"tables": {"T6": 20}})
+
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "restaurant",
+                "text": "table for 15 today at 6pm, customer Jane Smith",
+            },
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+
+    def test_post_rejects_non_positive_capacity(self, client):
+        response = client.post("/config/restaurant", json={"tables": {"T6": -1}})
+        assert response.status_code == 400
+```
+
+- [ ] **Step 7: Run tests to verify they fail**
+
+Run: `python -m pytest tests/test_http_api.py -k "TestClinicConfigEndpoint or TestRestaurantConfigEndpoint" -v`
+Expected: FAIL — `/config/clinic` and `/config/restaurant` don't exist yet (404).
+
+- [ ] **Step 8: Add the endpoints**
+
+Add these imports at the top of `eais_scheduling_agent/http_api.py`, alongside the other `eais_scheduling_agent` imports:
+
+```python
+from eais_scheduling_agent.skillpacks.clinic import ClinicSkillPack
+from eais_scheduling_agent.skillpacks.restaurant import RestaurantSkillPack
+```
+
+Add the four endpoints, after `get_config()`/`post_config()` (the existing LLM-config endpoints):
+
+```python
+    @app.get("/config/clinic")
+    def get_clinic_config():
+        pack = skill_packs["clinic_v1"]
+        return jsonify({"practitioners": pack.practitioners, "working_hours": pack.working_hours}), 200
+
+    @app.post("/config/clinic")
+    def post_clinic_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        current = skill_packs["clinic_v1"]
+        practitioners = dict(current.practitioners)
+        if "practitioners" in body:
+            new_entries = body["practitioners"]
+            valid = isinstance(new_entries, dict) and all(
+                isinstance(name, str)
+                and isinstance(minutes, int)
+                and not isinstance(minutes, bool)
+                and minutes > 0
+                for name, minutes in new_entries.items()
+            )
+            if not valid:
+                return (
+                    jsonify(
+                        {"error": "'practitioners' must be an object of name -> positive integer minutes"}
+                    ),
+                    400,
+                )
+            practitioners.update(new_entries)
+
+        working_hours = dict(current.working_hours)
+        if "working_hours" in body:
+            if not isinstance(body["working_hours"], dict):
+                return jsonify({"error": "'working_hours' must be an object with 'open'/'close'"}), 400
+            working_hours = body["working_hours"]
+
+        try:
+            new_pack = ClinicSkillPack(practitioners=practitioners, working_hours=working_hours)
+        except (ValueError, KeyError) as exc:
+            return jsonify({"error": f"invalid config: {exc}"}), 400
+
+        skill_packs["clinic_v1"] = new_pack
+        return jsonify({"practitioners": new_pack.practitioners, "working_hours": new_pack.working_hours}), 200
+
+    @app.get("/config/restaurant")
+    def get_restaurant_config():
+        pack = skill_packs["restaurant_v1"]
+        return jsonify({"tables": pack.tables, "working_hours": pack.working_hours}), 200
+
+    @app.post("/config/restaurant")
+    def post_restaurant_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        current = skill_packs["restaurant_v1"]
+        tables = dict(current.tables)
+        if "tables" in body:
+            new_entries = body["tables"]
+            valid = isinstance(new_entries, dict) and all(
+                isinstance(table_id, str)
+                and isinstance(capacity, int)
+                and not isinstance(capacity, bool)
+                and capacity > 0
+                for table_id, capacity in new_entries.items()
+            )
+            if not valid:
+                return (
+                    jsonify({"error": "'tables' must be an object of table id -> positive integer capacity"}),
+                    400,
+                )
+            tables.update(new_entries)
+
+        working_hours = dict(current.working_hours)
+        if "working_hours" in body:
+            if not isinstance(body["working_hours"], dict):
+                return jsonify({"error": "'working_hours' must be an object with 'open'/'close'"}), 400
+            working_hours = body["working_hours"]
+
+        try:
+            new_pack = RestaurantSkillPack(tables=tables, working_hours=working_hours)
+        except (ValueError, KeyError) as exc:
+            return jsonify({"error": f"invalid config: {exc}"}), 400
+
+        skill_packs["restaurant_v1"] = new_pack
+        return jsonify({"tables": new_pack.tables, "working_hours": new_pack.working_hours}), 200
+```
+
+(Note: `practitioners`/`tables` use a **merge** — `dict.update()` — semantics: posting `{"practitioners": {"Dr. C": 25}}` adds Dr. C without removing Dr. A/Dr. B, and posting `{"practitioners": {"Dr. A": 45}}` changes only Dr. A's duration. There is deliberately no way to remove a practitioner/table through this endpoint — matches Ahmed's request, "add practitioners or change durations," which is additive/corrective, not deletive. `working_hours`, by contrast, is a wholesale replace when provided, since a partial open/close makes no sense.)
+
+- [ ] **Step 9: Run tests to verify they pass**
+
+Run: `python -m pytest tests/test_http_api.py -v`
+Expected: All PASS.
+
+- [ ] **Step 10: Run the full suite**
+
+Run: `python -m pytest -q`
+Expected: All PASS.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add eais_scheduling_agent/http_api.py tests/test_http_api.py
+git commit -m "Add GET/POST /config/clinic and /config/restaurant for slot-rules editing"
+```
+
+---
+
+### Task 8: Dashboard structure & style — tab bar, Warm Neutral palette
 
 **Files:**
 - Modify: `eais_scheduling_agent/templates/dashboard.html` (full rewrite)
 - Modify: `eais_scheduling_agent/static/style.css` (full rewrite)
 
 **Interfaces:**
-- Produces: five `<section>` elements with `id="tab-book"`, `id="tab-pending"`, `id="tab-audit-clinic"`, `id="tab-audit-restaurant"`, `id="tab-config"`, toggled by Task 8's JS via a `.active` class on both the tab button and its section. No behavior in this task — verified visually only.
+- Consumes: `GET /config/clinic` / `GET /config/restaurant` (Task 7) for the read-only slot-rules markup below (populated by Task 9's JS, not this task).
+- Produces: five `<section>` elements with `id="tab-book"`, `id="tab-pending"`, `id="tab-audit-clinic"`, `id="tab-audit-restaurant"`, `id="tab-config"`, toggled by Task 9's JS via a `.active` class on both the tab button and its section. No behavior in this task — verified visually only.
 
 - [ ] **Step 1: Write `dashboard.html`**
 
@@ -1014,6 +1345,29 @@ git commit -m "Gitignore the new per-sector audit files and pending-request queu
 
     <section id="tab-audit-clinic" class="tab-panel">
       <h2>Audit trail &mdash; Clinic</h2>
+
+      <div class="slot-rules">
+        <h3>Slot rules</h3>
+        <dl id="clinic-rules-display" class="rules-display"></dl>
+        <button type="button" class="toggle-edit" data-target="clinic-rules-form">Edit</button>
+        <form id="clinic-rules-form" class="rules-form hidden">
+          <label for="clinic-practitioner-name">Practitioner name (new or existing)</label>
+          <input type="text" id="clinic-practitioner-name" placeholder="Dr. C">
+
+          <label for="clinic-practitioner-duration">Duration (minutes)</label>
+          <input type="number" id="clinic-practitioner-duration" min="1" step="1">
+
+          <label for="clinic-open">Open (HH:MM)</label>
+          <input type="text" id="clinic-open" placeholder="09:00">
+
+          <label for="clinic-close">Close (HH:MM)</label>
+          <input type="text" id="clinic-close" placeholder="17:00">
+
+          <button type="submit">Save</button>
+        </form>
+        <div id="clinic-rules-result" class="result"></div>
+      </div>
+
       <button type="button" class="refresh-audit" data-sector="clinic">Refresh</button>
       <table class="audit-table">
         <thead>
@@ -1025,6 +1379,29 @@ git commit -m "Gitignore the new per-sector audit files and pending-request queu
 
     <section id="tab-audit-restaurant" class="tab-panel">
       <h2>Audit trail &mdash; Restaurant</h2>
+
+      <div class="slot-rules">
+        <h3>Slot rules</h3>
+        <dl id="restaurant-rules-display" class="rules-display"></dl>
+        <button type="button" class="toggle-edit" data-target="restaurant-rules-form">Edit</button>
+        <form id="restaurant-rules-form" class="rules-form hidden">
+          <label for="restaurant-table-id">Table id (new or existing)</label>
+          <input type="text" id="restaurant-table-id" placeholder="T6">
+
+          <label for="restaurant-table-capacity">Capacity (seats)</label>
+          <input type="number" id="restaurant-table-capacity" min="1" step="1">
+
+          <label for="restaurant-open">Open (HH:MM)</label>
+          <input type="text" id="restaurant-open" placeholder="11:00">
+
+          <label for="restaurant-close">Close (HH:MM)</label>
+          <input type="text" id="restaurant-close" placeholder="22:00">
+
+          <button type="submit">Save</button>
+        </form>
+        <div id="restaurant-rules-result" class="result"></div>
+      </div>
+
       <button type="button" class="refresh-audit" data-sector="restaurant">Refresh</button>
       <table class="audit-table">
         <thead>
@@ -1315,6 +1692,54 @@ button:disabled {
   margin-top: 12px;
 }
 
+.slot-rules {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.slot-rules h3 {
+  font-family: Georgia, serif;
+  font-size: 15px;
+  margin: 0 0 8px;
+}
+
+.rules-display {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.rules-display dt {
+  color: var(--muted);
+}
+
+.rules-display dd {
+  margin: 0;
+}
+
+.toggle-edit {
+  background: #fff;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.rules-form {
+  margin-top: 10px;
+}
+
+.rules-form.hidden {
+  display: none;
+}
+
 .audit-table {
   width: 100%;
   border-collapse: collapse;
@@ -1359,7 +1784,7 @@ Run:
 python -c "from eais_scheduling_agent.http_api import run; run()"
 ```
 
-Open `http://127.0.0.1:5000/` in a browser. Confirm: the tab bar shows all five tabs with "Book" active by default, the Warm Neutral palette is visible (cream background, terracotta active-tab underline), and every tab button is clickable (clicking others won't switch panels yet -- that's Task 8). Stop the server (Ctrl+C) when done.
+Open `http://127.0.0.1:5000/` in a browser. Confirm: the tab bar shows all five tabs with "Book" active by default, the Warm Neutral palette is visible (cream background, terracotta active-tab underline), every tab button is clickable (clicking others won't switch panels yet -- that's Task 9), and each audit tab shows an empty "Slot rules" card above its (also empty) audit table, with an "Edit" button that toggles the (currently non-functional) form below it. Stop the server (Ctrl+C) when done.
 
 - [ ] **Step 3: Commit**
 
@@ -1370,13 +1795,13 @@ git commit -m "Rebuild dashboard structure: tab bar + Warm Neutral palette"
 
 ---
 
-### Task 8: Dashboard behavior — tabs, 3-state booking messages, pending queue, split audit, config
+### Task 9: Dashboard behavior — tabs, 3-state booking messages, pending queue, split audit, config, slot rules
 
 **Files:**
 - Modify: `eais_scheduling_agent/static/app.js` (full rewrite)
 
 **Interfaces:**
-- Consumes every endpoint from Tasks 2-5: `GET/POST /bookings`, `GET /audit?sector=`, `GET /pending?sector=`, `POST /pending/<id>/accept`, `POST /pending/<id>/reject`, `GET/POST /config` (unchanged from before this plan).
+- Consumes every endpoint from Tasks 2-5 and 7: `GET/POST /bookings`, `GET /audit?sector=`, `GET /pending?sector=`, `POST /pending/<id>/accept`, `POST /pending/<id>/reject`, `GET/POST /config` (unchanged from before this plan), `GET/POST /config/clinic`, `GET/POST /config/restaurant`.
 
 - [ ] **Step 1: Write `app.js`**
 
@@ -1394,8 +1819,14 @@ document.addEventListener("DOMContentLoaded", () => {
       panel.classList.toggle("active", panel.id === tabId);
     }
     if (tabId === "tab-pending") loadPending();
-    if (tabId === "tab-audit-clinic") loadAudit("clinic");
-    if (tabId === "tab-audit-restaurant") loadAudit("restaurant");
+    if (tabId === "tab-audit-clinic") {
+      loadAudit("clinic");
+      loadClinicRules();
+    }
+    if (tabId === "tab-audit-restaurant") {
+      loadAudit("restaurant");
+      loadRestaurantRules();
+    }
   }
 
   for (const button of tabButtons) {
@@ -1562,6 +1993,129 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // -- Slot rules (per sector) ---------------------------------------------
+  function renderRulesDisplay(dl, items, workingHours) {
+    dl.innerHTML = "";
+    for (const [name, value] of Object.entries(items)) {
+      const dt = document.createElement("dt");
+      dt.textContent = name;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+    const hoursDt = document.createElement("dt");
+    hoursDt.textContent = "Hours";
+    const hoursDd = document.createElement("dd");
+    hoursDd.textContent = `${workingHours.open}–${workingHours.close}`;
+    dl.appendChild(hoursDt);
+    dl.appendChild(hoursDd);
+  }
+
+  async function loadClinicRules() {
+    const response = await fetch("/config/clinic");
+    const body = await response.json();
+    const items = {};
+    for (const [name, minutes] of Object.entries(body.practitioners)) {
+      items[name] = `${minutes} min`;
+    }
+    renderRulesDisplay(document.getElementById("clinic-rules-display"), items, body.working_hours);
+  }
+
+  async function loadRestaurantRules() {
+    const response = await fetch("/config/restaurant");
+    const body = await response.json();
+    const items = {};
+    for (const [tableId, capacity] of Object.entries(body.tables)) {
+      items[tableId] = `${capacity} seats`;
+    }
+    renderRulesDisplay(
+      document.getElementById("restaurant-rules-display"),
+      items,
+      body.working_hours
+    );
+  }
+
+  for (const toggle of document.querySelectorAll(".toggle-edit")) {
+    toggle.addEventListener("click", () => {
+      document.getElementById(toggle.dataset.target).classList.toggle("hidden");
+    });
+  }
+
+  const clinicRulesForm = document.getElementById("clinic-rules-form");
+  const clinicRulesResult = document.getElementById("clinic-rules-result");
+
+  clinicRulesForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = clinicRulesForm.querySelector("button[type=submit]");
+    const name = document.getElementById("clinic-practitioner-name").value.trim();
+    const duration = document.getElementById("clinic-practitioner-duration").value;
+    const open = document.getElementById("clinic-open").value.trim();
+    const close = document.getElementById("clinic-close").value.trim();
+
+    const payload = {};
+    if (name !== "" && duration !== "") {
+      payload.practitioners = { [name]: Number(duration) };
+    }
+    if (open !== "" && close !== "") {
+      payload.working_hours = { open, close };
+    }
+
+    await withLoading(submitButton, "Saving...", async () => {
+      const response = await fetch("/config/clinic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+
+      if (response.ok) {
+        flashResult(clinicRulesResult, "Saved.", "status-confirmed");
+        clinicRulesForm.reset();
+        await loadClinicRules();
+      } else {
+        flashResult(clinicRulesResult, `Error: ${body.error}`, "status-error");
+      }
+    });
+  });
+
+  const restaurantRulesForm = document.getElementById("restaurant-rules-form");
+  const restaurantRulesResult = document.getElementById("restaurant-rules-result");
+
+  restaurantRulesForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submitButton = restaurantRulesForm.querySelector("button[type=submit]");
+    const tableId = document.getElementById("restaurant-table-id").value.trim();
+    const capacity = document.getElementById("restaurant-table-capacity").value;
+    const open = document.getElementById("restaurant-open").value.trim();
+    const close = document.getElementById("restaurant-close").value.trim();
+
+    const payload = {};
+    if (tableId !== "" && capacity !== "") {
+      payload.tables = { [tableId]: Number(capacity) };
+    }
+    if (open !== "" && close !== "") {
+      payload.working_hours = { open, close };
+    }
+
+    await withLoading(submitButton, "Saving...", async () => {
+      const response = await fetch("/config/restaurant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+
+      if (response.ok) {
+        flashResult(restaurantRulesResult, "Saved.", "status-confirmed");
+        restaurantRulesForm.reset();
+        await loadRestaurantRules();
+      } else {
+        flashResult(restaurantRulesResult, `Error: ${body.error}`, "status-error");
+      }
+    });
+  });
+
   // -- Config -------------------------------------------------------------
   const configForm = document.getElementById("config-form");
   const configResult = document.getElementById("config-result");
@@ -1632,6 +2186,7 @@ With the server running, in a browser at `http://127.0.0.1:5000/`:
 3. Submit another unknown-practitioner request, click Reject this time → card disappears; verify via curl that the corresponding audit record has `"approval_status": "rejected"`.
 4. **Audit: Clinic** and **Audit: Restaurant** tabs: confirm each only shows that sector's records (book one of each sector first if the tables look empty).
 5. **Config tab**: unchanged from before this plan -- confirm it still loads/saves correctly.
+6. **Slot rules**: on the Audit: Clinic tab, confirm the "Slot rules" card shows "Dr. A: 30 min", "Dr. B: 20 min", "Hours: 09:00–17:00". Click Edit, enter practitioner name "Dr. C", duration "25", leave hours blank, submit -- the card should refresh to show Dr. C added, without losing Dr. A/Dr. B. Submit a booking for "Dr. C today at 10am, patient Test Person" on the Book tab and confirm it's CONFIRMED (proves the new practitioner is real, not just displayed). Repeat the table-id/capacity equivalent on the Audit: Restaurant tab.
 
 Stop the server (Ctrl+C) when done.
 
@@ -1649,7 +2204,7 @@ git commit -m "Wire up dashboard behavior: tabs, pending accept/reject, split au
 
 ---
 
-### Task 9: Update `EXTENSIONS.md` and `README.md`
+### Task 10: Update `EXTENSIONS.md` and `README.md`
 
 **Files:**
 - Modify: `EXTENSIONS.md`
@@ -1677,7 +2232,16 @@ just an inline message asking for more detail. The audit trail is also
 now genuinely split into `audit.clinic.jsonl` / `audit.restaurant.jsonl`
 (web server only -- the CLI's `audit.jsonl` is unaffected), with
 `GET /audit`'s existing no-argument merged view kept for backward
-compatibility.
+compatibility. (3) Each sector's slot rules (clinic: practitioners and
+their appointment duration; restaurant: tables and their seat capacity;
+both: working hours) are now viewable and editable from that sector's
+audit tab via `GET/POST /config/clinic` and `GET/POST /config/restaurant`
+-- additive/corrective only (add a practitioner, change a duration), no
+deletion. `ClinicSkillPack`/`RestaurantSkillPack` gained one read-only
+property each (`practitioners`/`tables`, mirroring the existing
+`working_hours` property); all mutation happens by constructing a new
+skill pack instance and swapping it into the `skill_packs` dict
+`create_app()` already holds, not by adding setters to those classes.
 
 See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the original
 design rationale and `docs/superpowers/specs/2026-08-07-dashboard-redesign-design.md`
@@ -1705,7 +2269,12 @@ browser. Five tabs:
   discards it. Both are logged to the audit trail. Survives a server
   restart (file-backed, unlike the in-memory booking store).
 - **Audit: Clinic** / **Audit: Restaurant** -- genuinely separate audit
-  files per sector (`audit.clinic.jsonl` / `audit.restaurant.jsonl`).
+  files per sector (`audit.clinic.jsonl` / `audit.restaurant.jsonl`), each
+  with a "Slot rules" card above the audit table showing that sector's
+  practitioners (clinic) or tables (restaurant) and working hours, with
+  an Edit form to add a practitioner/table or change a duration/capacity
+  or the working hours. Additive/corrective only -- no way to remove an
+  existing practitioner or table from this UI.
 - **Config** -- view or change the LLM backend (`base_url`/`model`/
   `api_key`/`timeout`) at runtime, without restarting the server. The API
   key is never sent back to the browser as its raw value, only whether
@@ -1725,6 +2294,7 @@ git commit -m "Document the dashboard redesign in EXTENSIONS.md and README"
 
 ## Self-Review Notes (already applied above)
 
-- **Spec coverage:** visual redesign (Task 7), per-sector audit split (Task 2), pending accept/reject queue (Tasks 1, 4, 5), clarification messaging (Task 3), error handling (404/409 in Task 5, missing/corrupt-file tolerance in Task 1), testing (every backend task is TDD; Task 8's frontend is manually verified, consistent with this project having no JS test framework yet). All covered.
+- **Spec coverage:** visual redesign (Task 8), per-sector audit split (Task 2), pending accept/reject queue (Tasks 1, 4, 5), clarification messaging (Task 3), slot-rules read/edit (Task 7, added mid-execution at Ahmed's request alongside Task 5's review), error handling (404/409/422 in Task 5, 400 in Task 7, missing/corrupt-file tolerance in Task 1), testing (every backend task is TDD; Task 9's frontend is manually verified, consistent with this project having no JS test framework yet). All covered.
 - **Backward compatibility:** `create_app(audit_file=...)` single-arg construction, and `GET /audit` with no `sector` param, are both explicitly tested in Task 2 as regression guards, not just assumed.
-- **Type/name consistency checked:** `PendingRequestStore.add/list/get/remove` signatures in Task 1 match every call site in Tasks 4-5; `_sector_audit_path`, `_read_audit_records`, `_pending_item_to_json` are each defined once (Tasks 2 and 4) and reused, not redefined.
+- **Type/name consistency checked:** `PendingRequestStore.add/list/get/remove` signatures in Task 1 match every call site in Tasks 4-5; `_sector_audit_path`, `_read_audit_records`, `_pending_item_to_json` are each defined once (Tasks 2 and 4) and reused, not redefined; `skill_packs["clinic_v1"]`/`["restaurant_v1"]` replacement in Task 7 uses the exact same dict object every other endpoint (e.g. Task 5's `accept_pending`) already reads from, so no wiring changes were needed elsewhere for the swap to take effect.
+- **Task 5 addendum:** a real defect in this plan's own test data was found and fixed during Task 5's execution (`ClinicSkillPack.slot_rules()` raises `ValueError` for an unknown practitioner, which the brief's original accept/409 test scenarios used) -- see the SDD ledger for the full account. Not a gap in the final shipped code, which was corrected and re-reviewed clean, but worth knowing if this plan is ever reused as a template.
