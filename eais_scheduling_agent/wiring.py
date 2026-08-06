@@ -86,33 +86,27 @@ def render_confirmation(skill_pack: SkillPack, request: BookingRequest) -> str:
     return skill_pack.confirmation_template().format(**request.fields)
 
 
-def build_llm_client() -> HTTPClient:
-    """Build the LLM `HTTPClient` from environment configuration.
+def resolve_llm_config() -> dict:
+    """Resolve `EAIS_LLM_*` environment variables (or their defaults) into
+    a plain dict.
 
-    The one place `EAIS_LLM_*` environment variables are read -- `cli.py`
-    and `http_api.py` both call this rather than reading the environment
-    themselves, and `LLMIntake`/`OpenAICompatibleHTTPClient` stay entirely
-    environment-agnostic (directly constructible and testable with no env
-    var setup at all).
+    The env-var-reading logic itself -- including the malformed-value
+    fallback -- is unchanged from what `build_llm_client()` used to do
+    inline; it now returns data instead of immediately constructing a
+    client, so a caller (the web UI's `/config` endpoints) can inspect or
+    layer a runtime override on top without needing a constructed
+    `OpenAICompatibleHTTPClient` to peek inside of.
 
     Reads:
         EAIS_LLM_BASE_URL: OpenAI-compatible API root (default: local
-            Ollama's OpenAI-compatible endpoint). `/chat/completions` is
-            appended by `OpenAICompatibleHTTPClient` itself.
+            Ollama's OpenAI-compatible endpoint).
         EAIS_LLM_MODEL: Model name sent in each request (default:
-            "llama3.2", the locally-pulled default this project has
-            always assumed).
-        EAIS_LLM_API_KEY: If set, sent as an `Authorization: Bearer`
-            header; unset means no auth header at all (a local Ollama
-            server needs none; a hosted vLLM server may require one).
+            "llama3.2").
+        EAIS_LLM_API_KEY: If set, the value to send as an
+            `Authorization: Bearer` header; `None` if unset.
         EAIS_LLM_TIMEOUT: Per-request timeout in seconds, as a float
-            (default: 60.0 -- a larger, remotely-hosted model is expected
-            to respond slower than a small local one).
-
-    Unset variables fall back to the exact defaults `OllamaHTTPClient`
-    (the client this replaced) used to hardcode, so `--llm` /
-    `"llm": true` with no configuration at all keeps working exactly as
-    before.
+            (default: 60.0). A malformed value falls back to the default
+            rather than raising.
     """
     base_url = os.environ.get("EAIS_LLM_BASE_URL", _DEFAULT_LLM_BASE_URL)
     model = os.environ.get("EAIS_LLM_MODEL", _DEFAULT_LLM_MODEL)
@@ -130,9 +124,26 @@ def build_llm_client() -> HTTPClient:
             # same "unset/invalid falls back to the sane default"
             # philosophy as every other var this function reads.
             timeout = _DEFAULT_LLM_TIMEOUT
-    return OpenAICompatibleHTTPClient(
-        base_url=base_url, model=model, api_key=api_key, timeout=timeout
-    )
+    return {
+        "base_url": base_url,
+        "model": model,
+        "api_key": api_key,
+        "timeout": timeout,
+    }
+
+
+def build_llm_client() -> HTTPClient:
+    """Build the LLM `HTTPClient` from environment configuration.
+
+    The one place `EAIS_LLM_*` environment variables are read for the
+    CLI's `--llm` path -- `cli.py` calls this rather than reading the
+    environment itself. The web UI's `POST /bookings` path does not use
+    this function directly; it calls `resolve_llm_config()` and layers a
+    runtime override on top instead (see `http_api.py`'s
+    `_RuntimeLLMConfig`).
+    """
+    config = resolve_llm_config()
+    return OpenAICompatibleHTTPClient(**config)
 
 
 class CachingIntake(IntakeService):

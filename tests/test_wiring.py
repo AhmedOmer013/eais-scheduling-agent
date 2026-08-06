@@ -145,3 +145,45 @@ class TestBuildLLMClient:
         client = wiring.build_llm_client()
 
         assert client._timeout == 60.0
+
+
+class TestResolveLLMConfig:
+    def test_defaults_when_no_env_vars_set(self, monkeypatch):
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
+        config = wiring.resolve_llm_config()
+
+        assert config == {
+            "base_url": "http://localhost:11434/v1",
+            "model": "llama3.2",
+            "api_key": None,
+            "timeout": 60.0,
+        }
+
+    def test_reads_all_four_overrides(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_BASE_URL", "http://100.64.0.5:8000/v1")
+        monkeypatch.setenv("EAIS_LLM_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+        monkeypatch.setenv("EAIS_LLM_API_KEY", "secret-key")
+        monkeypatch.setenv("EAIS_LLM_TIMEOUT", "120")
+
+        config = wiring.resolve_llm_config()
+
+        assert config == {
+            "base_url": "http://100.64.0.5:8000/v1",
+            "model": "Qwen/Qwen2.5-72B-Instruct",
+            "api_key": "secret-key",
+            "timeout": 120.0,
+        }
+
+    def test_invalid_timeout_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_TIMEOUT", "not-a-number")
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+
+        config = wiring.resolve_llm_config()
+
+        assert config["timeout"] == 60.0
