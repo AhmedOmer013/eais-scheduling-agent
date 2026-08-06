@@ -125,6 +125,23 @@ $ python -m eais_scheduling_agent.cli clinic "Dr. A today at 11am, patient Jane 
 Confirmed: Jane Roe with Dr. A at 2026-08-05 11:00:00.
 ```
 
+### Configuring the LLM backend
+
+`--llm` (CLI) and `"llm": true` (HTTP API) both talk to whatever
+OpenAI-compatible server these environment variables point at. Unset,
+they default to a local Ollama server -- set them to reach a different
+local model or a hosted one instead:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EAIS_LLM_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible API root; `/chat/completions` is appended automatically |
+| `EAIS_LLM_MODEL` | `llama3.2` | Model name sent in each request |
+| `EAIS_LLM_API_KEY` | unset | Sent as `Authorization: Bearer <key>` if set; omitted entirely otherwise |
+| `EAIS_LLM_TIMEOUT` | `60.0` | Per-request timeout in seconds |
+
+This is not part of the original assessment brief's scope -- see
+`EXTENSIONS.md`.
+
 ## Run the HTTP API (optional)
 
 The CLI above satisfies the brief's interface requirement on its own;
