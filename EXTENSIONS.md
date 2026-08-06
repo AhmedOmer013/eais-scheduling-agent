@@ -45,12 +45,23 @@ with no TLS enforcement and no redirect protection -- treat
 untrusted or redirect-capable proxy. Full production hardening here is
 explicitly out of scope for this prototype (see the top of this file).
 
-### 2. Web UI *(planned, not yet built)*
+### 2. Web UI
 
-A browser-based front end for making booking requests, built on top of
-the existing `POST /bookings` / `GET /audit` HTTP API
-(`eais_scheduling_agent/http_api.py`). Will get its own design spec and
-plan before implementation, same as everything else in this repo.
+A single-page, server-rendered dashboard (`GET /`,
+`eais_scheduling_agent/templates/dashboard.html`) with three panels:
+making a booking, viewing the audit trail, and viewing/changing the LLM
+backend config at runtime. Plain HTML/CSS/JS -- no build step, no JS
+framework -- served by the same Flask app as the JSON HTTP API.
+
+Model config is read-write: `GET /config` / `POST /config` let you view
+and change `base_url`/`model`/`api_key`/`timeout` for the running server
+process, taking effect on the very next booking request (no restart).
+The API key is never returned to the browser as its raw value -- only
+whether one is set. No authentication, consistent with every other
+endpoint in this project.
+
+See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the full
+design rationale.
 
 ### 3. Playwright end-to-end tests *(planned, not yet built)*
 
