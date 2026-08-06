@@ -1,7 +1,8 @@
 """LLM-backed intake, with graceful fallback to a deterministic parser (T13).
 
-`LLMIntake` implements `IntakeService` (see `core.interfaces`) by asking a
-local LLM -- Ollama, resolved by the T13 brief, not relitigated here -- to
+`LLMIntake` implements `IntakeService` (see `core.interfaces`) by asking an
+LLM -- local or hosted, resolved by the T13 brief and later generalized
+beyond its original Ollama-only scope, not relitigated here -- to
 extract structured fields from free text, then defensively validating
 whatever comes back. Same interface as T12's `OfflineIntake`, and in
 practice constructed *with* an `OfflineIntake` instance as its fallback:
@@ -12,11 +13,11 @@ Why this module can never be a single point of failure:
 
     This environment (and CI) has no LLM runtime installed -- see the T13
     brief's "Runtime choice" section. Even in a deployment that *does* have
-    Ollama running, a local model is unreliable in ways a regex parser is
-    not: the process might not be running, the model might not be pulled,
-    the response might not be valid JSON, or the JSON might have the right
-    shape but wrong-typed values. `parse()` treats every one of those as
-    the same signal -- "the LLM path didn't work this time" -- and
+    a local or hosted LLM server reachable, it is unreliable in ways a
+    regex parser is not: the process might not be running, the model might
+    not be pulled, the response might not be valid JSON, or the JSON might
+    have the right shape but wrong-typed values. `parse()` treats every
+    one of those as the same signal -- "the LLM path didn't work this time" -- and
     delegates to `self._fallback.parse(text, sector)` rather than raising.
     Nothing here ever raises out of `parse()` on account of the LLM; the
     only exceptions that can escape are bugs, not degraded LLM behaviour.
@@ -116,7 +117,7 @@ class OpenAICompatibleHTTPClient:
             }
         ).encode("utf-8")
         headers = {"Content-Type": "application/json"}
-        if self._api_key is not None:
+        if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         request = urllib.request.Request(
             self._url,

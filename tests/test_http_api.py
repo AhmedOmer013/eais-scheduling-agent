@@ -87,12 +87,22 @@ class TestMalformedBody:
 
 
 class TestLLMFlagFallsBackCleanly:
-    """No local Ollama server is installed in this environment or CI
+    """No LLM backend reachable in this environment or CI
     (same situation `tests/test_cli.py::TestLLMFlagFallsBackCleanly`
     documents) -- `"llm": true` still confirms via automatic fallback.
     """
 
-    def test_llm_true_falls_back_and_still_confirms(self, client):
+    def test_llm_true_falls_back_and_still_confirms(self, client, monkeypatch):
+        # Clear any ambient EAIS_LLM_* config so this test always targets
+        # the unreachable-by-default localhost endpoint, regardless of
+        # what a developer running this suite locally has exported to
+        # point "llm": true at their own real backend (exactly what this
+        # branch exists to let them do).
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
         response = client.post(
             "/bookings",
             json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe", "llm": True},

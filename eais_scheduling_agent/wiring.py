@@ -117,7 +117,19 @@ def build_llm_client() -> HTTPClient:
     base_url = os.environ.get("EAIS_LLM_BASE_URL", _DEFAULT_LLM_BASE_URL)
     model = os.environ.get("EAIS_LLM_MODEL", _DEFAULT_LLM_MODEL)
     api_key = os.environ.get("EAIS_LLM_API_KEY")
-    timeout = float(os.environ.get("EAIS_LLM_TIMEOUT", _DEFAULT_LLM_TIMEOUT))
+    raw_timeout = os.environ.get("EAIS_LLM_TIMEOUT")
+    if raw_timeout is None:
+        timeout = _DEFAULT_LLM_TIMEOUT
+    else:
+        try:
+            timeout = float(raw_timeout)
+        except ValueError:
+            # A malformed value (e.g. an empty string from an unset
+            # variable reference in some deployment config, or plain
+            # garbage) falls back to the default rather than raising --
+            # same "unset/invalid falls back to the sane default"
+            # philosophy as every other var this function reads.
+            timeout = _DEFAULT_LLM_TIMEOUT
     return OpenAICompatibleHTTPClient(
         base_url=base_url, model=model, api_key=api_key, timeout=timeout
     )

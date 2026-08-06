@@ -77,11 +77,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--llm",
         action="store_true",
         help=(
-            "Use LLM-backed intake (via a local Ollama server) instead of "
-            "the default deterministic offline parser. Falls back to "
-            "offline intake automatically if the LLM is unreachable or "
-            "unreliable. Opt-in because no local model is guaranteed to be "
-            "running."
+            "Use LLM-backed intake (via any OpenAI-compatible server -- "
+            "local Ollama by default, or a hosted server if "
+            "EAIS_LLM_BASE_URL is set) instead of the default deterministic "
+            "offline parser. Falls back to offline intake automatically if "
+            "the LLM is unreachable or unreliable. Opt-in because no local "
+            "model is guaranteed to be running."
         ),
     )
     parser.add_argument(

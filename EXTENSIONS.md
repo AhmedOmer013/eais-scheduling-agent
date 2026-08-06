@@ -39,6 +39,12 @@ the configuration differs. See
 `docs/superpowers/specs/2026-08-05-configurable-llm-backend-design.md`
 for the full design rationale.
 
+Known limitation: `EAIS_LLM_API_KEY`, if set, is sent as a bearer token
+with no TLS enforcement and no redirect protection -- treat
+`EAIS_LLM_BASE_URL` as a trusted endpoint, not one you'd point at an
+untrusted or redirect-capable proxy. Full production hardening here is
+explicitly out of scope for this prototype (see the top of this file).
+
 ### 2. Web UI *(planned, not yet built)*
 
 A browser-based front end for making booking requests, built on top of

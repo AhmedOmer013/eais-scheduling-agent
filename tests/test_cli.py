@@ -153,7 +153,17 @@ class TestLLMFlagFallsBackCleanly:
     same offline result rather than crashing or hanging.
     """
 
-    def test_falls_back_to_offline_and_still_confirms(self, tmp_path, capsys):
+    def test_falls_back_to_offline_and_still_confirms(self, tmp_path, capsys, monkeypatch):
+        # Clear any ambient EAIS_LLM_* config so this test always targets
+        # the unreachable-by-default localhost endpoint, regardless of
+        # what a developer running this suite locally has exported to
+        # point `--llm` at their own real backend (exactly what this
+        # branch exists to let them do).
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
         audit_path = tmp_path / "audit.jsonl"
 
         exit_code = cli.main(

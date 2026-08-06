@@ -227,15 +227,21 @@ kept apart:
 
 1. **The HTTP client boundary** (`HTTPClient = Callable[[str], str]`).
    `LLMIntake` accepts any zero-state callable taking a prompt and
-   returning the model's raw text; the real `OllamaHTTPClient` (stdlib
-   `urllib.request` only, no new dependency) is just the default. Every
-   exception the client raises is caught in one `except Exception`
-   around the single call site and mapped to the fallback. Tests inject
-   a fake callable, which is what makes "zero real network calls in the
-   test suite" a structural fact (dependency injection) rather than a
-   convention someone could accidentally violate — confirmed by the
-   reviewer scanning every `OllamaHTTPClient` reference in the T13 diff
-   and every test-file `LLMIntake` construction.
+   returning the model's raw text; the real `OpenAICompatibleHTTPClient`
+   (stdlib `urllib.request` only, no new dependency) is the one
+   production code always passes in -- `LLMIntake.__init__`'s `client`
+   parameter is required, not defaulted, so there is no implicit
+   fallback to a concrete client hidden inside `LLMIntake` itself; see
+   `intake/llm.py`'s own docstrings. Every exception the client raises
+   is caught in one `except Exception` around the single call site and
+   mapped to the fallback. Tests inject a fake callable, which is what
+   makes "zero real network calls in the test suite" a structural fact
+   (dependency injection) rather than a convention someone could
+   accidentally violate — confirmed by the reviewer scanning every
+   `OllamaHTTPClient` reference in the T13 diff (this class's original
+   name at the time, later generalized to `OpenAICompatibleHTTPClient`
+   by the configurable-LLM-backend extension) and every test-file
+   `LLMIntake` construction.
 2. **Response validation** (`_parse_and_validate`), independent of the
    client. Even a *successful* HTTP call's JSON is validated field by
    field against a per-sector schema; a field that fails validation is

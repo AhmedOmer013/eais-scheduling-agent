@@ -220,17 +220,20 @@ Both were run in this worktree; real output:
 ```
 $ python -m pytest
 ...
-============================= 251 passed in 8.01s =============================
+============================ 282 passed in 16.46s =============================
 ```
 
 `pytest`'s configuration (`[tool.pytest.ini_options]` in
 `pyproject.toml`) restricts test collection to `tests/`, in verbose
 mode (`-v`) by default — no extra flags needed. **No network access is
-required**: every test exercises `LLMIntake` (T13) through an injected
-fake HTTP client rather than a real socket (confirmed directly — no test
-file references `urllib`, `socket`, `requests`, or `http.client`; one
-test, `tests/test_offline_intake.py`, explicitly asserts none of those
-modules are imported by the offline path at all).
+required**: no test opens a real network socket. Most tests exercise
+`LLMIntake` (T13) through an injected fake `HTTPClient` callable rather
+than a real one; `OpenAICompatibleHTTPClient`'s own request-building
+logic (`tests/test_llm_intake.py::TestOpenAICompatibleHTTPClient`) is
+instead tested by monkeypatching `urllib.request.urlopen`, which also
+never opens a real socket. Separately, `tests/test_offline_intake.py`
+explicitly asserts that `urllib`, `socket`, `requests`, and
+`http.client` are not imported by the offline path at all.
 
 ## Known gaps
 

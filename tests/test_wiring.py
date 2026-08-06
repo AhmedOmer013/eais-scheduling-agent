@@ -135,3 +135,13 @@ class TestBuildLLMClient:
         client = wiring.build_llm_client()
 
         assert client._timeout == 120.0
+
+    def test_invalid_timeout_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("EAIS_LLM_TIMEOUT", "not-a-number")
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+
+        client = wiring.build_llm_client()
+
+        assert client._timeout == 60.0
