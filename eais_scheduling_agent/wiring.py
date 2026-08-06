@@ -35,7 +35,7 @@ DEFAULT_MANIFEST_DIR = Path(__file__).resolve().parent / "manifests"
 #: orchestration decision itself, which the core alone makes.
 _MANIFEST_SUFFIXES = (".yaml", ".yml", ".json")
 
-#: Defaults for `build_llm_client()` below -- deliberately preserve
+#: Defaults for `resolve_llm_config()` below -- deliberately preserve
 #: today's zero-config behavior (a local Ollama server on its default
 #: port), now via its OpenAI-compatible endpoint rather than its native
 #: one. Overridden via environment variables, never hardcoded elsewhere.

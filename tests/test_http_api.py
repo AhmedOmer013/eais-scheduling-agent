@@ -236,6 +236,16 @@ class TestPostConfig:
 
         assert response.status_code == 400
 
+    def test_zero_timeout_returns_400(self, client):
+        response = client.post("/config", json={"timeout": 0})
+
+        assert response.status_code == 400
+
+    def test_negative_timeout_returns_400(self, client):
+        response = client.post("/config", json={"timeout": -5})
+
+        assert response.status_code == 400
+
     def test_non_string_base_url_returns_400(self, client):
         response = client.post("/config", json={"base_url": 12345})
 
@@ -245,6 +255,17 @@ class TestPostConfig:
         response = client.post("/config", data="not json", content_type="text/plain")
 
         assert response.status_code == 400
+
+    def test_rejected_request_does_not_partially_apply(self, client, monkeypatch):
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        response = client.post(
+            "/config", json={"base_url": "http://evil.invalid/v1", "model": 12345}
+        )
+
+        assert response.status_code == 400
+
+        follow_up = client.get("/config")
+        assert follow_up.get_json()["base_url"] == "http://localhost:11434/v1"
 
 
 class TestDashboardPage:
@@ -256,3 +277,34 @@ class TestDashboardPage:
         assert 'id="booking-form"' in html
         assert 'id="audit-table"' in html
         assert 'id="config-form"' in html
+
+
+class TestConfigOverrideReachesBookingRequest:
+    def test_post_config_changes_the_client_used_by_llm_bookings(self, client, monkeypatch):
+        captured = {}
+
+        class _RecordingClient:
+            def __init__(self, base_url, model, api_key=None, timeout=60.0):
+                captured["base_url"] = base_url
+                captured["model"] = model
+                captured["timeout"] = timeout
+
+            def __call__(self, prompt):
+                raise ConnectionError("recording stub never actually calls out")
+
+        monkeypatch.setattr(
+            "eais_scheduling_agent.http_api.OpenAICompatibleHTTPClient", _RecordingClient
+        )
+
+        client.post(
+            "/config",
+            json={"base_url": "http://example.invalid/v1", "model": "custom-test-model"},
+        )
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe", "llm": True},
+        )
+
+        assert response.status_code == 200
+        assert captured["base_url"] == "http://example.invalid/v1"
+        assert captured["model"] == "custom-test-model"

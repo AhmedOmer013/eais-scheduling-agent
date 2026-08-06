@@ -6,19 +6,27 @@ module. See docs/superpowers/specs/2026-08-05-http-interface-design.md
 for the full design rationale.
 
 The one deliberate behavioral difference from the CLI: `create_app()`
-builds `store`, `gate`, `audit`, and `skill_packs` once, at app-creation
-time, and holds them for the server's lifetime. The CLI builds a fresh
-`InMemoryBookingStore` per process (per invocation), so two separate
-`eais-book` calls can never conflict with each other; a long-running
-server is one continuous process, so sharing one store here makes
-cross-request conflict detection real for as long as the server runs
-(see `tests/test_http_api.py::TestSharedStoreAcrossRequests`). That
-reasoning assumes single-request-at-a-time handling: the dev server
+builds `store`, `gate`, `audit`, `skill_packs`, and `runtime_config`
+once, at app-creation time, and holds them for the server's lifetime.
+The CLI builds a fresh `InMemoryBookingStore` per process (per
+invocation), so two separate `eais-book` calls can never conflict with
+each other; a long-running server is one continuous process, so sharing
+one store here makes cross-request conflict detection real for as long
+as the server runs (see `tests/test_http_api.py::TestSharedStoreAcrossRequests`).
+That reasoning assumes single-request-at-a-time handling: the dev server
 (`run()` below) runs threaded by default, and `InMemoryBookingStore` has
 no internal locking, so two truly concurrent requests are not guaranteed
 to serialize correctly (a check-then-act race is possible) -- a known,
 documented limitation of this prototype, not something this module
-guards against with a mutex.
+guards against with a mutex. `runtime_config` (a `_RuntimeLLMConfig`)
+holds the in-memory LLM backend override set via `POST /config`; it
+starts with every field unset (falling back to `wiring.resolve_llm_config()`)
+and is read by `POST /bookings`' `use_llm` branch on every request.
+
+Besides `POST /bookings` and `GET /audit`, this module also serves the
+dashboard itself (`GET /`, `eais_scheduling_agent/templates/dashboard.html`,
+plus its static assets) and the runtime LLM config endpoints
+(`GET /config`, `POST /config`) described above.
 
 Intake and `SchedulingAgentCore` are built fresh *per request*, inside
 `post_booking()`, wired to those same shared `store`/`gate`/`audit`/
@@ -208,25 +216,40 @@ def create_app(
 
     @app.post("/config")
     def post_config():
+        # Two-pass: validate every field in the body first, without
+        # touching `runtime_config`, and only apply once everything has
+        # validated successfully. This keeps a rejected request (e.g. a
+        # valid `base_url` followed by an invalid `model`) from partially
+        # applying -- a 400 response must mean nothing changed.
         body = request.get_json(silent=True)
         if not isinstance(body, dict):
             return jsonify({"error": "request body must be a JSON object"}), 400
 
+        string_updates = {}
         for field_name in ("base_url", "model", "api_key"):
             if field_name in body:
                 value = body[field_name]
                 if not isinstance(value, str):
                     return jsonify({"error": f"'{field_name}' must be a string"}), 400
-                setattr(runtime_config, field_name, value if value != "" else None)
+                string_updates[field_name] = value if value != "" else None
 
-        if "timeout" in body:
+        timeout_update = None
+        timeout_provided = "timeout" in body
+        if timeout_provided:
             value = body["timeout"]
             if value is None:
-                runtime_config.timeout = None
+                timeout_update = None
             elif isinstance(value, bool) or not isinstance(value, (int, float)):
                 return jsonify({"error": "'timeout' must be a number or null"}), 400
+            elif value <= 0:
+                return jsonify({"error": "'timeout' must be a positive number"}), 400
             else:
-                runtime_config.timeout = float(value)
+                timeout_update = float(value)
+
+        for field_name, value in string_updates.items():
+            setattr(runtime_config, field_name, value)
+        if timeout_provided:
+            runtime_config.timeout = timeout_update
 
         config = runtime_config.effective()
         return (

@@ -58,3 +58,9 @@ th, td {
   margin-top: 1rem;
   font-weight: bold;
 }
+
+footer {
+  margin-top: 2rem;
+  color: #666;
+  font-size: 0.8rem;
+}
