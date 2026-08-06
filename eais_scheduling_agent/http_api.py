@@ -47,7 +47,7 @@ submitted again after midnight.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
 
@@ -56,6 +56,7 @@ from flask import Flask, jsonify, render_template, request
 from eais_scheduling_agent import wiring
 from eais_scheduling_agent.core.audit import JsonLinesAuditTrail
 from eais_scheduling_agent.core.gate import StandardApprovalGate
+from eais_scheduling_agent.core.models import AuditRecord, BookingRequest
 from eais_scheduling_agent.core.orchestrator import (
     InvalidManifestError,
     OrchestrationError,
@@ -253,6 +254,65 @@ def create_app(
 
         items = pending_store.list(sector=sector)
         return jsonify({"items": [_pending_item_to_json(item) for item in items]}), 200
+
+    @app.post("/pending/<request_id>/accept")
+    def accept_pending(request_id):
+        item = pending_store.get(request_id)
+        if item is None:
+            return jsonify({"error": f"no pending request with id {request_id!r}"}), 404
+
+        booking_request = BookingRequest(
+            sector=item["sector"], fields=item["fields"], raw_text=item["text"]
+        )
+        skill_pack = skill_packs[item["skill_pack"]]
+        try:
+            slot = skill_pack.slot_rules(booking_request)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 422
+
+        if store.check_conflict(booking_request, slot):
+            return (
+                jsonify({"error": "requested slot now conflicts with an existing booking"}),
+                409,
+            )
+
+        store.persist(booking_request, slot)
+        audit_by_sector[item["sector"]].append(
+            AuditRecord(
+                input=item["text"],
+                skill_pack=item["skill_pack"],
+                intent=dict(item["fields"]),
+                rules_evaluated=[f"human override: accepted (was: {item['reason']})"],
+                decision=_CONFIRMED,
+                approval_status="approved",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        pending_store.remove(request_id)
+
+        message = wiring.render_confirmation(skill_pack, booking_request)
+        return jsonify({"status": _CONFIRMED, "message": message}), 200
+
+    @app.post("/pending/<request_id>/reject")
+    def reject_pending(request_id):
+        item = pending_store.get(request_id)
+        if item is None:
+            return jsonify({"error": f"no pending request with id {request_id!r}"}), 404
+
+        audit_by_sector[item["sector"]].append(
+            AuditRecord(
+                input=item["text"],
+                skill_pack=item["skill_pack"],
+                intent=dict(item["fields"]),
+                rules_evaluated=[f"human override: rejected (was: {item['reason']})"],
+                decision=_PENDING_APPROVAL,
+                approval_status="rejected",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        pending_store.remove(request_id)
+
+        return jsonify({"status": "REJECTED"}), 200
 
     @app.get("/audit")
     def get_audit():
