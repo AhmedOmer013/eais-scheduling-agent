@@ -40,9 +40,9 @@ submitted again after midnight.
 
 import json
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 from eais_scheduling_agent import wiring
 from eais_scheduling_agent.core.audit import JsonLinesAuditTrail
@@ -56,10 +56,35 @@ from eais_scheduling_agent.core.orchestrator import (
     UnknownSkillPackError,
 )
 from eais_scheduling_agent.core.store import InMemoryBookingStore
-from eais_scheduling_agent.intake.llm import LLMIntake
+from eais_scheduling_agent.intake.llm import LLMIntake, OpenAICompatibleHTTPClient
 from eais_scheduling_agent.intake.offline import OfflineIntake
 
 _CONFIRMED = "CONFIRMED"
+
+
+class _RuntimeLLMConfig:
+    """In-memory override for the LLM backend config, settable via
+    `POST /config`. Each field is `None` until explicitly set, meaning
+    "no override -- use `wiring.resolve_llm_config()`'s value for this
+    field." Lives for the server process's lifetime, same scope as the
+    shared `store`/`gate`/`audit` `create_app()` already holds.
+    """
+
+    def __init__(self) -> None:
+        self.base_url: Optional[str] = None
+        self.model: Optional[str] = None
+        self.api_key: Optional[str] = None
+        self.timeout: Optional[float] = None
+
+    def effective(self) -> dict:
+        """Merge this override on top of `wiring.resolve_llm_config()`."""
+        base = wiring.resolve_llm_config()
+        return {
+            "base_url": self.base_url if self.base_url is not None else base["base_url"],
+            "model": self.model if self.model is not None else base["model"],
+            "api_key": self.api_key if self.api_key is not None else base["api_key"],
+            "timeout": self.timeout if self.timeout is not None else base["timeout"],
+        }
 
 
 def create_app(
@@ -82,6 +107,7 @@ def create_app(
     gate = StandardApprovalGate()
     store = InMemoryBookingStore()
     audit = JsonLinesAuditTrail(path=audit_file)
+    runtime_config = _RuntimeLLMConfig()
 
     @app.post("/bookings")
     def post_booking():
@@ -108,8 +134,9 @@ def create_app(
         use_llm = body.get("llm") is True
 
         if use_llm:
+            client = OpenAICompatibleHTTPClient(**runtime_config.effective())
             intake = wiring.CachingIntake(
-                LLMIntake(fallback=OfflineIntake(), client=wiring.build_llm_client())
+                LLMIntake(fallback=OfflineIntake(), client=client)
             )
         else:
             intake = wiring.CachingIntake(OfflineIntake())
@@ -159,6 +186,56 @@ def create_app(
                 if line.strip():
                     records.append(json.loads(line))
         return jsonify({"records": records}), 200
+
+    @app.get("/config")
+    def get_config():
+        config = runtime_config.effective()
+        return (
+            jsonify(
+                {
+                    "base_url": config["base_url"],
+                    "model": config["model"],
+                    "api_key_set": bool(config["api_key"]),
+                    "timeout": config["timeout"],
+                }
+            ),
+            200,
+        )
+
+    @app.post("/config")
+    def post_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        for field_name in ("base_url", "model", "api_key"):
+            if field_name in body:
+                value = body[field_name]
+                if not isinstance(value, str):
+                    return jsonify({"error": f"'{field_name}' must be a string"}), 400
+                setattr(runtime_config, field_name, value if value != "" else None)
+
+        if "timeout" in body:
+            value = body["timeout"]
+            if value is None:
+                runtime_config.timeout = None
+            elif isinstance(value, bool) or not isinstance(value, (int, float)):
+                return jsonify({"error": "'timeout' must be a number or null"}), 400
+            else:
+                runtime_config.timeout = float(value)
+
+        config = runtime_config.effective()
+        return (
+            jsonify(
+                {
+                    "base_url": config["base_url"],
+                    "model": config["model"],
+                    "api_key_set": bool(config["api_key"]),
+                    "timeout": config["timeout"],
+                }
+            ),
+            200,
+        )
 
     return app
 

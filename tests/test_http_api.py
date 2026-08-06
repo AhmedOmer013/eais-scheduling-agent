@@ -155,3 +155,93 @@ class TestSharedStoreAcrossRequests:
         body = second.get_json()
         assert body["status"] == "PENDING_APPROVAL"
         assert "conflicts with an existing booking" in body["reason"]
+
+
+class TestGetConfig:
+    def test_returns_defaults_when_nothing_configured(self, client, monkeypatch):
+        monkeypatch.delenv("EAIS_LLM_BASE_URL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        monkeypatch.delenv("EAIS_LLM_API_KEY", raising=False)
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+
+        response = client.get("/config")
+
+        assert response.status_code == 200
+        assert response.get_json() == {
+            "base_url": "http://localhost:11434/v1",
+            "model": "llama3.2",
+            "api_key_set": False,
+            "timeout": 60.0,
+        }
+
+
+class TestPostConfig:
+    def test_sets_base_url_override_and_get_reflects_it(self, client):
+        response = client.post("/config", json={"base_url": "http://100.64.0.5:8000/v1"})
+        assert response.status_code == 200
+        assert response.get_json()["base_url"] == "http://100.64.0.5:8000/v1"
+
+        follow_up = client.get("/config")
+        assert follow_up.get_json()["base_url"] == "http://100.64.0.5:8000/v1"
+
+    def test_sets_api_key_and_never_returns_raw_value(self, client):
+        response = client.post("/config", json={"api_key": "secret-key"})
+
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["api_key_set"] is True
+        assert "api_key" not in body
+
+    def test_empty_string_clears_a_string_override(self, client, monkeypatch):
+        monkeypatch.delenv("EAIS_LLM_MODEL", raising=False)
+        client.post("/config", json={"model": "custom-model"})
+
+        response = client.post("/config", json={"model": ""})
+
+        assert response.status_code == 200
+        assert response.get_json()["model"] == "llama3.2"
+
+    def test_absent_field_leaves_existing_override_untouched(self, client):
+        client.post("/config", json={"model": "custom-model"})
+
+        response = client.post("/config", json={"base_url": "http://example.invalid/v1"})
+
+        assert response.status_code == 200
+        assert response.get_json()["model"] == "custom-model"
+
+    def test_sets_numeric_timeout_override(self, client):
+        response = client.post("/config", json={"timeout": 120})
+
+        assert response.status_code == 200
+        assert response.get_json()["timeout"] == 120.0
+
+    def test_null_timeout_clears_override(self, client, monkeypatch):
+        monkeypatch.delenv("EAIS_LLM_TIMEOUT", raising=False)
+        client.post("/config", json={"timeout": 90})
+
+        response = client.post("/config", json={"timeout": None})
+
+        assert response.status_code == 200
+        assert response.get_json()["timeout"] == 60.0
+
+    def test_non_numeric_timeout_returns_400(self, client):
+        response = client.post("/config", json={"timeout": "soon"})
+
+        assert response.status_code == 400
+
+    def test_boolean_timeout_returns_400(self, client):
+        # bool is a subclass of int in Python -- must be explicitly
+        # rejected, same precedent as intake/llm.py's _validate_party_size.
+        response = client.post("/config", json={"timeout": True})
+
+        assert response.status_code == 400
+
+    def test_non_string_base_url_returns_400(self, client):
+        response = client.post("/config", json={"base_url": 12345})
+
+        assert response.status_code == 400
+
+    def test_malformed_body_returns_400(self, client):
+        response = client.post("/config", data="not json", content_type="text/plain")
+
+        assert response.status_code == 400
