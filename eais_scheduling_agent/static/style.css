@@ -260,19 +260,38 @@ button:disabled {
 }
 
 .rules-display {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 4px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin: 0 0 10px;
   font-size: 13px;
 }
 
-.rules-display dt {
+.rules-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.rules-row .label {
   color: var(--muted);
 }
 
-.rules-display dd {
-  margin: 0;
+.rules-row .value {
+  flex: 1;
+  text-align: right;
+  margin-right: 4px;
+}
+
+.rules-row .delete-item {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 9px;
+  cursor: pointer;
 }
 
 .toggle-edit {
