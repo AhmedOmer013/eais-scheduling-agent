@@ -703,6 +703,56 @@ class TestClinicConfigEndpoint:
         assert response.status_code == 400
 
 
+class TestClinicConfigDeletion:
+    def test_post_removes_a_practitioner(self, client):
+        response = client.post("/config/clinic", json={"remove_practitioners": ["Dr. B"]})
+        assert response.status_code == 200
+        assert response.get_json()["practitioners"] == {"Dr. A": 30}
+
+    def test_removed_practitioner_is_no_longer_bookable(self, client):
+        client.post("/config/clinic", json={"remove_practitioners": ["Dr. B"]})
+
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. B today at 10am, patient John Doe"},
+        )
+
+        assert response.get_json()["status"] == "PENDING_APPROVAL"
+        assert "unknown practitioner" in response.get_json()["reason"]
+
+    def test_remove_and_re_add_in_the_same_request_keeps_it_with_the_new_value(self, client):
+        response = client.post(
+            "/config/clinic",
+            json={"remove_practitioners": ["Dr. A"], "practitioners": {"Dr. A": 99}},
+        )
+        assert response.status_code == 200
+        assert response.get_json()["practitioners"]["Dr. A"] == 99
+
+    def test_removing_an_unknown_practitioner_is_a_no_op(self, client):
+        response = client.post("/config/clinic", json={"remove_practitioners": ["Dr. Z"]})
+        assert response.status_code == 200
+        assert response.get_json()["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+
+    def test_rejects_removing_the_last_practitioner(self, client):
+        response = client.post(
+            "/config/clinic", json={"remove_practitioners": ["Dr. A", "Dr. B"]}
+        )
+        assert response.status_code == 400
+        # Nothing was applied -- config unchanged.
+        assert client.get("/config/clinic").get_json()["practitioners"] == {
+            "Dr. A": 30,
+            "Dr. B": 20,
+        }
+
+    def test_rejects_non_list_remove_practitioners(self, client):
+        response = client.post("/config/clinic", json={"remove_practitioners": "Dr. A"})
+        assert response.status_code == 400
+
+    def test_rejects_non_string_items_in_remove_practitioners(self, client):
+        response = client.post("/config/clinic", json={"remove_practitioners": [123]})
+        assert response.status_code == 400
+
+
 class TestRestaurantConfigEndpoint:
     def test_get_returns_current_tables_and_hours(self, client):
         response = client.get("/config/restaurant")
@@ -731,4 +781,58 @@ class TestRestaurantConfigEndpoint:
 
     def test_post_rejects_non_positive_capacity(self, client):
         response = client.post("/config/restaurant", json={"tables": {"T6": -1}})
+        assert response.status_code == 400
+
+
+class TestRestaurantConfigDeletion:
+    def test_post_removes_a_table(self, client):
+        response = client.post("/config/restaurant", json={"remove_tables": ["T5"]})
+        assert response.status_code == 200
+        assert "T5" not in response.get_json()["tables"]
+
+    def test_removed_table_is_no_longer_assignable(self, client):
+        # T5 (capacity 8) is the only table big enough for a party of 8 --
+        # removing it means that party size can no longer be seated at all.
+        client.post("/config/restaurant", json={"remove_tables": ["T5"]})
+
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "restaurant",
+                "text": "table for 8 today at 6pm, customer Jane Smith",
+            },
+        )
+
+        assert response.get_json()["status"] == "PENDING_APPROVAL"
+        assert "exceeds largest table capacity" in response.get_json()["reason"]
+
+    def test_remove_and_re_add_in_the_same_request_keeps_it_with_the_new_value(self, client):
+        response = client.post(
+            "/config/restaurant",
+            json={"remove_tables": ["T1"], "tables": {"T1": 99}},
+        )
+        assert response.status_code == 200
+        assert response.get_json()["tables"]["T1"] == 99
+
+    def test_removing_an_unknown_table_is_a_no_op(self, client):
+        response = client.post("/config/restaurant", json={"remove_tables": ["T9"]})
+        assert response.status_code == 200
+        assert response.get_json()["tables"] == {"T1": 2, "T2": 2, "T3": 4, "T4": 6, "T5": 8}
+
+    def test_rejects_removing_every_table(self, client):
+        response = client.post(
+            "/config/restaurant",
+            json={"remove_tables": ["T1", "T2", "T3", "T4", "T5"]},
+        )
+        assert response.status_code == 400
+        assert client.get("/config/restaurant").get_json()["tables"] == {
+            "T1": 2,
+            "T2": 2,
+            "T3": 4,
+            "T4": 6,
+            "T5": 8,
+        }
+
+    def test_rejects_non_list_remove_tables(self, client):
+        response = client.post("/config/restaurant", json={"remove_tables": "T1"})
         assert response.status_code == 400

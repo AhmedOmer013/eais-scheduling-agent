@@ -482,6 +482,16 @@ def create_app(
 
         current = skill_packs["clinic_v1"]
         practitioners = dict(current.practitioners)
+        if "remove_practitioners" in body:
+            names = body["remove_practitioners"]
+            if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+                return (
+                    jsonify({"error": "'remove_practitioners' must be a list of names"}),
+                    400,
+                )
+            for name in names:
+                practitioners.pop(name, None)
+
         if "practitioners" in body:
             new_entries = body["practitioners"]
             valid = isinstance(new_entries, dict) and all(
@@ -499,6 +509,12 @@ def create_app(
                     400,
                 )
             practitioners.update(new_entries)
+
+        if not practitioners:
+            return (
+                jsonify({"error": "cannot remove the last practitioner -- at least one must remain"}),
+                400,
+            )
 
         working_hours = dict(current.working_hours)
         if "working_hours" in body:
@@ -527,6 +543,13 @@ def create_app(
 
         current = skill_packs["restaurant_v1"]
         tables = dict(current.tables)
+        if "remove_tables" in body:
+            table_ids = body["remove_tables"]
+            if not isinstance(table_ids, list) or not all(isinstance(t, str) for t in table_ids):
+                return jsonify({"error": "'remove_tables' must be a list of table ids"}), 400
+            for table_id in table_ids:
+                tables.pop(table_id, None)
+
         if "tables" in body:
             new_entries = body["tables"]
             valid = isinstance(new_entries, dict) and all(
@@ -542,6 +565,12 @@ def create_app(
                     400,
                 )
             tables.update(new_entries)
+
+        if not tables:
+            return (
+                jsonify({"error": "cannot remove the last table -- at least one must remain"}),
+                400,
+            )
 
         working_hours = dict(current.working_hours)
         if "working_hours" in body:
