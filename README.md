@@ -139,6 +139,19 @@ local model or a hosted one instead:
 | `EAIS_LLM_API_KEY` | unset | Sent as `Authorization: Bearer <key>` if set; omitted entirely otherwise |
 | `EAIS_LLM_TIMEOUT` | `60.0` | Per-request timeout in seconds |
 
+**Free-tier hosted option: [Groq](https://console.groq.com).** No credit
+card required. Sign up, create an API key under "API Keys", then:
+
+```
+export EAIS_LLM_BASE_URL="https://api.groq.com/openai/v1"
+export EAIS_LLM_MODEL="llama-3.3-70b-versatile"
+export EAIS_LLM_API_KEY="gsk_..."
+```
+
+Verified against the real Groq API (see `EXTENSIONS.md` for the
+User-Agent fix this required, and "Evaluation" below for accuracy/latency
+numbers from a real run against it).
+
 This is not part of the original assessment brief's scope -- see
 `EXTENSIONS.md`.
 
@@ -213,6 +226,48 @@ view/change the LLM backend config for the running server.
   one is currently set (`api_key_set: true`/`false`).
 - Not part of the assessment brief's scope -- see `EXTENSIONS.md`.
 
+## Run everything with one command (optional)
+
+```
+./run.ps1     # Windows / PowerShell
+./run.sh      # macOS / Linux / Git Bash
+```
+
+Installs the `http` extra if it's missing, loads `EAIS_LLM_*` from a
+local `.env` if present (without overriding anything already set in your
+shell -- see "Configuring the LLM backend" above for what to put in it),
+starts the server at `http://127.0.0.1:5000`, and opens the dashboard in
+your default browser. Ctrl+C stops it. Equivalent to manually running
+`pip install -e ".[http]"` then the server command above -- this just
+collapses both into one step. Not part of the assessment brief's scope.
+
+## Evaluation: LLM intake accuracy & efficiency (optional)
+
+`scripts/eval_llm_intake.py` runs the project's existing 40-example
+labeled fixture set (`training/clinic_examples.jsonl` +
+`training/restaurant_examples.jsonl` -- reused, not a new synthetic
+dataset) through both `OfflineIntake` and the real Groq-backed
+`LLMIntake`, end to end through a real `SchedulingAgentCore`, and reports
+field-extraction accuracy, latency, and CONFIRMED-rate metrics. Not part
+of the assessment brief's scope; see `EXTENSIONS.md`.
+
+Results from a real run against Groq (`llama-3.3-70b-versatile`),
+2026-08-06 -- full detail (per-example results, methodology notes) in
+the accompanying Excel workbook, `eais_llm_intake_evaluation_2026-08-06.xlsx`:
+
+| Metric | Result |
+|---|---|
+| Requests used | 40 (4% of Groq's free-tier daily allowance -- well under the 30% budget) |
+| LLM path used (not offline fallback) | 100% |
+| Field extraction precision / recall / F1 | 89.6% / 95.2% / 92.3% |
+| Relative-date resolution accuracy | 92% (25 scored examples) |
+| Average / P95 latency | 0.31s / 0.59s |
+| CONFIRMED rate: offline vs. LLM | 12.5% vs. 12.5% (dataset skews toward deliberately ambiguous/incomplete requests, by design, to exercise the approval gate) |
+
+Reproduce with `python scripts/eval_llm_intake.py` (needs
+`EAIS_LLM_API_KEY` set; makes real, rate-limited network calls -- never
+run in CI).
+
 ## Run tests
 
 ```
@@ -232,7 +287,7 @@ Both were run in this worktree; real output:
 ```
 $ python -m pytest
 ...
-============================ 282 passed in 16.46s =============================
+============================ 305 passed in 13.64s =============================
 ```
 
 `pytest`'s configuration (`[tool.pytest.ini_options]` in

@@ -116,7 +116,17 @@ class OpenAICompatibleHTTPClient:
                 "response_format": {"type": "json_object"},
             }
         ).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
+        # Explicit User-Agent -- some hosted providers (Groq, confirmed)
+        # front their API with Cloudflare, which 403s urllib's default
+        # "Python-urllib/x.y" as bot traffic (Cloudflare error 1010). That
+        # 403 is indistinguishable from any other client failure once
+        # `LLMIntake.parse()` catches it, so without this the LLM path
+        # would silently and permanently fall back to the offline parser
+        # against any such provider.
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "eais-scheduling-agent/1.0",
+        }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         request = urllib.request.Request(
@@ -203,12 +213,22 @@ restaurant:
 """
 
 
-def _build_prompt(text: str, sector: str) -> str:
+def _build_prompt(text: str, sector: str, reference_date: datetime) -> str:
     """Build the few-shot prompt sent to the model for one `parse()` call.
 
-    Deliberately a pure function of `(text, sector)` -- no I/O, no state --
-    so prompt construction itself is trivially unit-testable without an
-    HTTP client at all.
+    Deliberately a pure function of `(text, sector, reference_date)` -- no
+    I/O, no state -- so prompt construction itself is trivially unit-testable
+    without an HTTP client at all. `reference_date` is caller-supplied (see
+    `LLMIntake.__init__`'s `now`) rather than computed here, same reason
+    `OfflineIntake` takes an injectable `now` instead of calling
+    `datetime.now()` internally: deterministic tests, one real clock read
+    per `parse()` call.
+
+    Without `reference_date` in the prompt, the model has no notion of
+    "today" at all and relative dates ("this Wednesday", "next Tuesday")
+    are pure guesses -- confirmed wrong in manual testing against a real
+    hosted model (resolved "this Wednesday" to a Thursday). Telling it the
+    exact date and weekday turns that guess into arithmetic.
     """
     lines = [
         "You are an intake parser for a scheduling system. Extract structured "
@@ -219,6 +239,11 @@ def _build_prompt(text: str, sector: str) -> str:
         "Only include a field if you are confident about its value. If you "
         "are not sure, or the input does not mention it, OMIT that key "
         "entirely -- do not guess, and do not use null/None as a placeholder.",
+        "",
+        f"Today's date is {reference_date.strftime('%Y-%m-%d')} "
+        f"({reference_date.strftime('%A')}). Resolve relative dates "
+        '("today", "tomorrow", "this Friday", "next Tuesday", ...) against '
+        "this date -- compute them, do not guess.",
         "",
         _SCHEMA_DESCRIPTION,
         "Examples:",
@@ -364,15 +389,23 @@ class LLMIntake(IntakeService):
             `cli.py`/`http_api.py`); tests always pass their own fake
             callable so no test touches a real network -- see
             `tests/test_llm_intake.py`.
+        now: Zero-arg callable returning the current `datetime`, used as
+            `_build_prompt`'s `reference_date` so the model is told what
+            day it actually is rather than guessing relative dates blind.
+            Defaults to the real `datetime.now` for production use --
+            same injectable-clock pattern as `OfflineIntake`'s `now`.
+            Tests inject a fixed callable for determinism.
     """
 
     def __init__(
         self,
         fallback: IntakeService,
         client: HTTPClient,
+        now: Callable[[], datetime] = datetime.now,
     ) -> None:
         self._fallback = fallback
         self._client = client
+        self._now = now
 
     def parse(self, text: str, sector: str) -> BookingRequest:
         """Extract a `BookingRequest` via the LLM, falling back on failure.
@@ -382,7 +415,7 @@ class LLMIntake(IntakeService):
         slow, or unreliable -- it always either returns a `BookingRequest`
         built from validated LLM output, or the fallback's result.
         """
-        prompt = _build_prompt(text, sector)
+        prompt = _build_prompt(text, sector, self._now())
 
         try:
             raw_response = self._client(prompt)

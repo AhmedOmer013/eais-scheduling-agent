@@ -47,6 +47,36 @@ with no TLS enforcement and no redirect protection -- treat
 untrusted or redirect-capable proxy. Full production hardening here is
 explicitly out of scope for this prototype (see the top of this file).
 
+**Groq verified as a free-tier hosted option (2026-08-06).** No credit
+card required; `https://api.groq.com/openai/v1` with e.g.
+`llama-3.3-70b-versatile` plugs straight into the same
+`OpenAICompatibleHTTPClient` as local Ollama or a Tailscale-reached vLLM
+server -- no code difference, per the design above. Verifying this
+against the real API surfaced one real bug: Groq (like many hosted APIs)
+fronts its endpoint with Cloudflare, which returns a bare `403` (Cloudflare
+error 1010) for `urllib`'s default `Python-urllib/x.y` User-Agent. That
+403 was indistinguishable from any other client failure once
+`LLMIntake.parse()` catches it (by design -- see that module's
+docstring), so without a fix the LLM path would have silently and
+permanently fallen back to the offline parser on every single request
+against Groq, with no error surfaced anywhere. Fixed by sending an
+explicit `User-Agent` header in `OpenAICompatibleHTTPClient.__call__`;
+covered by `tests/test_llm_intake.py::TestOpenAICompatibleHTTPClient::test_sends_a_non_default_user_agent`.
+
+Also fixed: the intake prompt never told the model today's actual date,
+so relative dates ("this Wednesday") were the model's own guess, not a
+computation -- confirmed wrong once in manual testing (resolved "this
+Wednesday" to a Thursday). `_build_prompt` now takes a required
+`reference_date` and states it explicitly in the prompt
+("Today's date is 2026-08-06 (Thursday)..."); `LLMIntake` resolves it via
+an injectable `now` callable (same pattern as `OfflineIntake`'s `now`,
+for deterministic tests). Covered by
+`tests/test_llm_intake.py::TestPromptBuildsWithoutNetwork::test_prompt_includes_reference_date_and_weekday`
+and `TestReferenceDateInjection`. Re-measured post-fix at 92% accuracy
+on the 25 date-bearing examples in the evaluation dataset (see extension
+#4 below) -- not 100%, since relative-date phrasing is still ultimately
+LLM inference, just no longer inference performed blind.
+
 ### 2. Web UI
 
 A single-page, server-rendered dashboard (`GET /`,
@@ -83,3 +113,40 @@ design rationale.
 ### 3. Playwright end-to-end tests *(planned, not yet built)*
 
 Drives the web UI above through a real browser.
+
+### 4. LLM intake evaluation harness
+
+`scripts/eval_llm_intake.py` measures the Groq-backed `LLMIntake` path
+against ground truth: the project's own existing 40-example labeled
+fixture set (`training/clinic_examples.jsonl` +
+`training/restaurant_examples.jsonl`), reused rather than fabricated.
+For each example it runs both `OfflineIntake` and the real
+`LLMIntake` through a fresh `SchedulingAgentCore` (manifests/store reset
+per example), and scores field-level precision/recall/F1, relative-date
+resolution accuracy (ground truth: `OfflineIntake`'s own tested date
+logic, anchored to the same reference time given to the LLM), latency,
+token usage, and CONFIRMED-vs-PENDING_APPROVAL rate for both paths.
+
+Paces requests to stay under Groq's free-tier tokens-per-minute limit,
+and hard-stops if a run would exceed 30% of the real daily request
+allowance -- read live from Groq's own `x-ratelimit-limit-requests`
+response header, not a hardcoded guess. A full 40-example run used 40
+requests (4% of the 1,000/day free-tier allowance) and 27,488 tokens.
+Never run in CI: makes real network calls against a rate-limited hosted
+API and needs `EAIS_LLM_API_KEY` set.
+
+Results are written to `scripts/eval_results.json` and summarized in
+`eais_llm_intake_evaluation_2026-08-06.xlsx` (kept outside this repo,
+alongside the D1-D3 document pack and Postman collection, per this
+project's existing practice of keeping personal/testing artifacts
+separate from the submission -- see README's "Evaluation" section for
+headline numbers).
+
+### 5. One-command launch (`run.ps1` / `run.sh`)
+
+Installs the `http` extra if missing, loads `EAIS_LLM_*` from a local
+`.env` if present (without overriding anything already set in the
+shell), starts the server, and opens the dashboard in a browser. Purely
+a convenience wrapper around commands already documented in README.md's
+"Install" / "Run the HTTP API" sections -- no new behavior, no new
+runtime dependency.
