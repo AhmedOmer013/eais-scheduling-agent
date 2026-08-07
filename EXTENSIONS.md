@@ -151,6 +151,22 @@ See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the original
 design rationale and `docs/superpowers/specs/2026-08-07-dashboard-redesign-design.md`
 for this redesign's.
 
+**2026-08-07: visual redesign ("Dispatch Console").** Replaced the Warm
+Neutral look above with a distinct visual world -- a dark instrument-panel
+header/tab bar over a light paper canvas, IBM Plex Sans for UI text and
+IBM Plex Mono for data readouts (times, decisions, durations, ids), an
+indigo accent, and a consistent dot+chip status code (confirmed/pending/
+clarify/error) reused everywhere status appears, replacing the earlier
+cream-and-terracotta styling identified as an overused AI-default look.
+Pure CSS/markup change (`static/style.css`, `templates/dashboard.html`) --
+`static/app.js`'s only change is `withLoading()` now swaps a button's
+`.btn-label` child span when present instead of the whole button's
+`textContent`, so the new inline icons on action buttons (Accept, Reject,
+Delete, Edit, Save, Refresh, Book) survive a loading-state cycle; every id,
+class, and event binding it queries is unchanged, and no other logic
+moved. See `PRODUCT.md` (the surface brief this redesign was built
+against) and `docs/superpowers/specs/2026-08-07-dispatch-console-redesign.md`.
+
 **2026-08-07: UAE timezone.** The web app (dashboard + HTTP API) now
 resolves relative dates ("today", "tomorrow") and records/displays
 timestamps in UAE wall-clock time (`wiring.UAE_TZ`/`wiring.uae_now()` --

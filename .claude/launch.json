@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "eais-dashboard",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["C:\\Users\\Ahmed\\Documents\\eais-scheduling-agent\\scripts\\dev_server.py"],
+      "port": 5000
+    }
+  ]
+}
