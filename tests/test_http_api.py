@@ -276,7 +276,8 @@ class TestDashboardPage:
         assert response.status_code == 200
         html = response.get_data(as_text=True)
         assert 'id="booking-form"' in html
-        assert 'id="audit-table"' in html
+        assert 'id="audit-body-clinic"' in html
+        assert 'id="audit-body-restaurant"' in html
         assert 'id="config-form"' in html
 
 
