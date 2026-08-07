@@ -85,6 +85,50 @@ _NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
 # `skill_packs`/`audit_by_sector` lookups keyed by the item's stored sector.
 _SECTORS = ("clinic", "restaurant")
 
+# Human-readable labels for the raw field names core/gate.py's missing-
+# fields reason names (e.g. "patient_name"). core/ itself has no sector
+# vocabulary to draw friendly names from by design (see
+# core/interfaces.py's RuleContext docstring), so this translation lives
+# here, at the one place that already knows both the raw reason and the
+# sector's skill pack. A name absent from this map (future field) falls
+# back to its raw key rather than raising -- see _friendly_field_name.
+_FRIENDLY_FIELD_NAMES = {
+    "practitioner": "doctor's name",
+    "patient_name": "patient's name",
+    "party_size": "party size",
+    "customer_name": "name on the booking",
+    "start_time": "timing",
+}
+
+
+def _friendly_field_name(raw: str) -> str:
+    return _FRIENDLY_FIELD_NAMES.get(raw, raw)
+
+
+def _join_with_and(items):
+    """["a"] -> "a"; ["a","b"] -> "a and b"; ["a","b","c"] -> "a, b, and c"."""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _build_clarification_message(sector: str, required_fields, raw_reason: str) -> str:
+    """Turn core/gate.py's raw "missing required field(s): x, y" reason
+    into a friendly, sector-specific message: what this sector's bookings
+    need in plain language, and exactly which of those is actually
+    missing -- not the full required set redundantly, and not raw field
+    keys like "patient_name".
+    """
+    missing_raw = raw_reason[len(_MISSING_FIELDS_PREFIX):].split(", ")
+    missing_friendly = [_friendly_field_name(f) for f in missing_raw]
+    required_friendly = [_friendly_field_name(f) for f in required_fields]
+    return (
+        f"{sector.capitalize()} bookings need {_join_with_and(required_friendly)} "
+        f"-- missing: {_join_with_and(missing_friendly)}."
+    )
+
 
 def _sector_audit_path(base: Path, sector: str) -> Path:
     """Derive a per-sector audit file path from the base `audit_file`.
@@ -258,7 +302,12 @@ def create_app(
             return jsonify({"status": _CONFIRMED, "message": message}), 200
 
         if decision.reason.startswith(_MISSING_FIELDS_PREFIX):
-            return jsonify({"status": _NEEDS_CLARIFICATION, "reason": decision.reason}), 200
+            manifest = wiring.load_manifest_for_render(manifest_dir, sector)
+            skill_pack = skill_packs[manifest.skill_pack]
+            friendly_reason = _build_clarification_message(
+                sector, skill_pack.required_fields, decision.reason
+            )
+            return jsonify({"status": _NEEDS_CLARIFICATION, "reason": friendly_reason}), 200
 
         manifest = wiring.load_manifest_for_render(manifest_dir, sector)
         booking_request = intake.parse(text, sector)  # cache hit

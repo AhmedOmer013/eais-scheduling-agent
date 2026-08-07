@@ -464,6 +464,41 @@ class TestPromptBuildsWithoutNetwork:
         assert "2026-08-06" in prompt
         assert "Thursday" in prompt
 
+    def test_prompt_includes_expanded_clinic_few_shot_examples(self):
+        # Two patterns the original 2-example set didn't cover: omitting
+        # an unspecified practitioner while still capturing a vague
+        # time_period, and a patient-name phrasing that doesn't lead with
+        # the practitioner's name.
+        prompt = _build_prompt("anything", "clinic", reference_date=datetime(2026, 8, 6))
+        assert "no preference on who" in prompt
+        assert "Dr. Patel" in prompt
+        assert "Emma" in prompt
+
+    def test_prompt_includes_expanded_restaurant_few_shot_examples(self):
+        # Two patterns the original 2-example set didn't cover: party
+        # size spelled out in words, and "reservation under NAME" phrasing
+        # with only a vague time_period (no exact clock time to guess).
+        prompt = _build_prompt("anything", "restaurant", reference_date=datetime(2026, 8, 6))
+        assert "four people" in prompt
+        assert "reservation under" in prompt
+
+    def test_prompt_emphasizes_clinic_core_fields(self):
+        prompt = _build_prompt("anything", "clinic", reference_date=datetime(2026, 8, 6))
+        assert "most critical" in prompt
+        assert "practitioner, start_time, patient_name" in prompt
+
+    def test_prompt_emphasizes_restaurant_core_fields(self):
+        prompt = _build_prompt("anything", "restaurant", reference_date=datetime(2026, 8, 6))
+        assert "most critical" in prompt
+        assert "party_size, start_time, customer_name" in prompt
+
+    def test_prompt_has_no_core_fields_emphasis_for_an_unknown_sector(self):
+        # _CORE_FIELDS_BY_SECTOR only knows clinic/restaurant -- an
+        # unrecognized sector should build a prompt fine, just without
+        # this emphasis line, not raise.
+        prompt = _build_prompt("anything", "veterinary", reference_date=datetime(2026, 8, 6))
+        assert "most critical" not in prompt
+
 
 class TestReferenceDateInjection:
     """`LLMIntake` resolves its own `now` (defaulting to the real
