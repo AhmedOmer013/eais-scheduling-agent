@@ -3,7 +3,7 @@ cli.py and http_api.py -- see docs/superpowers/specs/2026-08-05-http-interface-d
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -187,3 +187,24 @@ class TestResolveLLMConfig:
         config = wiring.resolve_llm_config()
 
         assert config["timeout"] == 60.0
+
+
+class TestUaeNow:
+    """UAE (Asia/Dubai) has never observed daylight saving -- a fixed
+    UTC+4 offset is exact year-round, so this needs no `zoneinfo`/`tzdata`
+    dependency. Web-app-only (http_api.py wires this into OfflineIntake/
+    LLMIntake's existing injectable `now`) -- cli.py and core/ are
+    untouched, same brief-scope boundary every other extension keeps.
+    """
+
+    def test_uae_tz_is_a_fixed_utc_plus_four_offset(self):
+        assert wiring.UAE_TZ.utcoffset(None) == timedelta(hours=4)
+
+    def test_uae_now_returns_a_naive_datetime(self):
+        assert wiring.uae_now().tzinfo is None
+
+    def test_uae_now_reflects_uae_wall_clock_time(self):
+        before = datetime.now(wiring.UAE_TZ).replace(tzinfo=None)
+        result = wiring.uae_now()
+        after = datetime.now(wiring.UAE_TZ).replace(tzinfo=None)
+        assert before <= result <= after

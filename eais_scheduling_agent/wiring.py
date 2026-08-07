@@ -9,6 +9,7 @@ the sector-naming knowledge on its own.
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Tuple, Union
 
@@ -42,6 +43,26 @@ _MANIFEST_SUFFIXES = (".yaml", ".yml", ".json")
 _DEFAULT_LLM_BASE_URL = "http://localhost:11434/v1"
 _DEFAULT_LLM_MODEL = "llama3.2"
 _DEFAULT_LLM_TIMEOUT = 60.0
+
+#: The UAE (Asia/Dubai) has never observed daylight saving -- a fixed
+#: UTC+4 offset is exact year-round, so this needs no `zoneinfo`/`tzdata`
+#: dependency (Windows has no IANA tz database by default; `zoneinfo`
+#: would need the `tzdata` package installed to resolve "Asia/Dubai").
+UAE_TZ = timezone(timedelta(hours=4))
+
+
+def uae_now() -> datetime:
+    """Current wall-clock time in the UAE, as a naive `datetime`.
+
+    Naive, not aware, to match `OfflineIntake`/`LLMIntake`'s existing
+    injectable-`now` convention (both compare/subtract it against other
+    naive datetimes internally -- an aware one would raise `TypeError`
+    on the first comparison). The returned value's *number* is UAE wall
+    time regardless of this machine's actual system clock/timezone
+    setting; only the tzinfo tag is stripped after converting, not the
+    underlying instant.
+    """
+    return datetime.now(UAE_TZ).replace(tzinfo=None)
 
 
 def build_skill_packs() -> Dict[str, SkillPack]:

@@ -236,7 +236,11 @@ truly concurrent requests are not guaranteed to serialize correctly.
 ## Web dashboard (optional)
 
 With the server running (see above), open `http://127.0.0.1:5000/` in a
-browser. Five tabs:
+browser. The dashboard resolves relative dates ("today", "tomorrow") and
+records/displays every timestamp in UAE time (fixed UTC+4), regardless
+of this machine's actual system clock -- the CLI is unaffected, still
+using this machine's real local time. See `EXTENSIONS.md` for how. Five
+tabs:
 
 - **Book** -- make a booking. Three possible outcomes, each styled
   distinctly: Confirmed (green), sent for human review (terracotta,
