@@ -136,9 +136,12 @@ compatibility. (3) Each sector's slot rules (clinic: practitioners and
 their appointment duration; restaurant: tables and their seat capacity;
 both: working hours) are now viewable and editable from that sector's
 audit tab via `GET/POST /config/clinic` and `GET/POST /config/restaurant`
--- additive/corrective only (add a practitioner, change a duration for
-clinic; add a table, change a capacity for restaurant), no deletion.
-`ClinicSkillPack`/`RestaurantSkillPack` gained one read-only
+-- add a practitioner/table, change a duration/capacity, or remove one
+entirely (`remove_practitioners`/`remove_tables`, applied before any
+same-request add/update, so remove-and-re-add-with-a-new-value works in
+one call). Removing the last remaining practitioner/table is rejected
+(`400`, config left unchanged) -- an empty sector would make every
+booking an automatic violation. `ClinicSkillPack`/`RestaurantSkillPack` gained one read-only
 property each (`practitioners`/`tables`, mirroring the existing
 `working_hours` property); all mutation happens by constructing a new
 skill pack instance and swapping it into the `skill_packs` dict
