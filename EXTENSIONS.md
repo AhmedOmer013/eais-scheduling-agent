@@ -151,6 +151,23 @@ See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the original
 design rationale and `docs/superpowers/specs/2026-08-07-dashboard-redesign-design.md`
 for this redesign's.
 
+**2026-08-07: UAE timezone.** The web app (dashboard + HTTP API) now
+resolves relative dates ("today", "tomorrow") and records/displays
+timestamps in UAE wall-clock time (`wiring.UAE_TZ`/`wiring.uae_now()` --
+a fixed UTC+4 offset, since the UAE has never observed daylight saving,
+needing no `zoneinfo`/`tzdata` dependency), regardless of this machine's
+actual system clock. `OfflineIntake`/`LLMIntake` are constructed with
+`now=wiring.uae_now` from `http_api.py` rather than their real-clock
+default -- an existing injection point, not a change to either class.
+New audit records `accept_pending`/`reject_pending` write use an aware
+UAE-offset timestamp directly; `GET /audit`/`GET /pending` convert
+*every* record's timestamp to UAE for display via `.astimezone()`,
+including ones `core/orchestrator.py` wrote in UTC (untouched -- the
+conversion happens on read, not by changing what core writes). `cli.py`
+and `core/` are untouched -- same brief-scope boundary every extension
+here keeps; the CLI still resolves dates and records audit timestamps
+against this machine's real system clock.
+
 ### 3. Playwright end-to-end tests *(planned, not yet built)*
 
 Drives the web UI above through a real browser.

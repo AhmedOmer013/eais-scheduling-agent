@@ -14,10 +14,13 @@ Flask is an optional dependency (the `http` extra); this whole module is
 skipped cleanly, not a collection error, when it isn't installed.
 """
 
+from datetime import datetime
+
 import pytest
 
 flask = pytest.importorskip("flask")
 
+from eais_scheduling_agent import wiring
 from eais_scheduling_agent.http_api import create_app
 
 
@@ -836,3 +839,104 @@ class TestRestaurantConfigDeletion:
     def test_rejects_non_list_remove_tables(self, client):
         response = client.post("/config/restaurant", json={"remove_tables": "T1"})
         assert response.status_code == 400
+
+
+class TestUaeTimezone:
+    """The whole web app (dashboard + HTTP API) resolves relative dates
+    and records timestamps in UAE wall-clock time (wiring.uae_now / .UAE_TZ)
+    regardless of this machine's actual system clock timezone -- cli.py
+    and core/ are untouched (same brief-scope boundary as every other
+    extension), so this is scoped entirely to what http_api.py itself
+    constructs or displays.
+    """
+
+    def test_booking_date_resolution_uses_injected_uae_now(self, client, monkeypatch):
+        monkeypatch.setattr(wiring, "uae_now", lambda: datetime(2027, 1, 1, 10, 0, 0))
+
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+        assert "2027-01-01 10:00:00" in response.get_json()["message"]
+
+    def test_llm_flag_also_uses_injected_uae_now_for_its_offline_fallback(self, client, monkeypatch):
+        # No LLM server reachable in this test environment -- LLMIntake
+        # falls back to OfflineIntake, which must be the *same*
+        # UAE-clocked instance, not a bare default.
+        monkeypatch.setattr(wiring, "uae_now", lambda: datetime(2027, 1, 1, 10, 0, 0))
+
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "clinic",
+                "text": "Dr. A today at 10am, patient John Doe",
+                "llm": True,
+            },
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+        assert "2027-01-01 10:00:00" in response.get_json()["message"]
+
+    def test_accept_pending_writes_a_uae_offset_timestamp(self, client):
+        # Known practitioner, outside working hours -- slot_rules() can
+        # compute a slot, so accept succeeds (unlike an unknown
+        # practitioner, which 422s -- see TestAcceptPendingRequest).
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 6am, patient John Doe"},
+        )
+        request_id = client.get("/pending").get_json()["items"][0]["id"]
+
+        client.post(f"/pending/{request_id}/accept")
+
+        records = client.get("/audit?sector=clinic").get_json()["records"]
+        approved = [r for r in records if r["approval_status"] == "approved"]
+        assert approved[0]["timestamp"].endswith("+04:00")
+
+    def test_reject_pending_writes_a_uae_offset_timestamp(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+        request_id = client.get("/pending").get_json()["items"][0]["id"]
+
+        client.post(f"/pending/{request_id}/reject")
+
+        records = client.get("/audit?sector=clinic").get_json()["records"]
+        rejected = [r for r in records if r["approval_status"] == "rejected"]
+        assert rejected[0]["timestamp"].endswith("+04:00")
+
+    def test_get_audit_converts_core_written_utc_timestamps_to_uae_for_display(self, client):
+        # This record's timestamp is written by core/orchestrator.py as
+        # datetime.now(timezone.utc) -- untouched, still UTC internally.
+        # GET /audit must still show it in UAE time to the caller.
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        records = client.get("/audit?sector=clinic").get_json()["records"]
+
+        assert records[0]["timestamp"].endswith("+04:00")
+
+    def test_get_audit_merged_view_also_converts_to_uae(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        records = client.get("/audit").get_json()["records"]
+
+        assert records[0]["timestamp"].endswith("+04:00")
+
+    def test_get_pending_converts_created_at_to_uae(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+
+        items = client.get("/pending").get_json()["items"]
+
+        assert items[0]["created_at"].endswith("+04:00")

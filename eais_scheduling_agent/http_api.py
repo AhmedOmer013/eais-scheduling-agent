@@ -47,7 +47,7 @@ submitted again after midnight.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
@@ -142,8 +142,20 @@ def _sector_audit_path(base: Path, sector: str) -> Path:
     return base.with_name(f"{base.stem}.{sector}{base.suffix}")
 
 
+def _to_uae_display(iso_timestamp: str) -> str:
+    """Convert an aware ISO 8601 timestamp string to UAE (UTC+4) time for
+    display. `.astimezone()` correctly re-expresses a timestamp already
+    in *any* offset -- both the UTC ones `core/orchestrator.py` writes
+    (untouched -- see this module's own scope boundary) and the
+    already-UAE ones `accept_pending`/`reject_pending` write below end
+    up shown identically, in UAE time, regardless of which wrote them.
+    """
+    return datetime.fromisoformat(iso_timestamp).astimezone(wiring.UAE_TZ).isoformat()
+
+
 def _read_audit_records(path: Path) -> list:
-    """Read one JSON record per non-blank line.
+    """Read one JSON record per non-blank line, with its `timestamp`
+    converted to UAE time for display (see `_to_uae_display`).
 
     Tolerates a single corrupt/truncated line (e.g. the server process
     was killed mid-write, leaving the last line half-written): that line
@@ -158,9 +170,12 @@ def _read_audit_records(path: Path) -> list:
         if not line.strip():
             continue
         try:
-            records.append(json.loads(line))
+            record = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if "timestamp" in record:
+            record["timestamp"] = _to_uae_display(record["timestamp"])
+        records.append(record)
     return records
 
 
@@ -168,9 +183,11 @@ def _pending_item_to_json(item: dict) -> dict:
     """`PendingRequestStore.list()` returns real `datetime` objects inside
     `fields` (see that module's docstring) -- Flask's `jsonify` cannot
     serialize those directly, so this converts just that one field back
-    to a string for the HTTP response.
+    to a string for the HTTP response. `created_at` is also converted to
+    UAE time for display (see `_to_uae_display`).
     """
     result = dict(item)
+    result["created_at"] = _to_uae_display(result["created_at"])
     fields = dict(result["fields"])
     if isinstance(fields.get("start_time"), datetime):
         fields["start_time"] = fields["start_time"].isoformat()
@@ -269,10 +286,14 @@ def create_app(
         if use_llm:
             client = OpenAICompatibleHTTPClient(**runtime_config.effective())
             intake = wiring.CachingIntake(
-                LLMIntake(fallback=OfflineIntake(), client=client)
+                LLMIntake(
+                    fallback=OfflineIntake(now=wiring.uae_now),
+                    client=client,
+                    now=wiring.uae_now,
+                )
             )
         else:
-            intake = wiring.CachingIntake(OfflineIntake())
+            intake = wiring.CachingIntake(OfflineIntake(now=wiring.uae_now))
 
         core = SchedulingAgentCore(
             manifest_dir=manifest_dir,
@@ -359,7 +380,7 @@ def create_app(
                 rules_evaluated=[f"human override: accepted (was: {item['reason']})"],
                 decision=_CONFIRMED,
                 approval_status="approved",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(wiring.UAE_TZ),
             )
         )
         pending_store.remove(request_id)
@@ -381,7 +402,7 @@ def create_app(
                 rules_evaluated=[f"human override: rejected (was: {item['reason']})"],
                 decision=_PENDING_APPROVAL,
                 approval_status="rejected",
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(wiring.UAE_TZ),
             )
         )
         pending_store.remove(request_id)
