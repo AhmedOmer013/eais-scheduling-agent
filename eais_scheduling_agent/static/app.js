@@ -202,22 +202,58 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // -- Slot rules (per sector) ---------------------------------------------
-  function renderRulesDisplay(dl, items, workingHours) {
-    dl.innerHTML = "";
+  // `onDelete(name)` is called when that row's Delete button is clicked --
+  // the caller decides which sector/endpoint that maps to. The "Hours" row
+  // has no delete button: working hours are always required, so "deleting"
+  // them makes no sense -- changing them is what the edit form is for.
+  function renderRulesDisplay(container, items, workingHours, onDelete) {
+    container.innerHTML = "";
     for (const [name, value] of Object.entries(items)) {
-      const dt = document.createElement("dt");
-      dt.textContent = name;
-      const dd = document.createElement("dd");
-      dd.textContent = value;
-      dl.appendChild(dt);
-      dl.appendChild(dd);
+      const row = document.createElement("div");
+      row.className = "rules-row";
+      row.innerHTML =
+        '<span class="label"></span><span class="value"></span>' +
+        '<button type="button" class="delete-item">Delete</button>';
+      row.querySelector(".label").textContent = name;
+      row.querySelector(".value").textContent = value;
+      const deleteButton = row.querySelector(".delete-item");
+      deleteButton.addEventListener("click", () => {
+        withLoading(deleteButton, "...", () => onDelete(name));
+      });
+      container.appendChild(row);
     }
-    const hoursDt = document.createElement("dt");
-    hoursDt.textContent = "Hours";
-    const hoursDd = document.createElement("dd");
-    hoursDd.textContent = `${workingHours.open}–${workingHours.close}`;
-    dl.appendChild(hoursDt);
-    dl.appendChild(hoursDd);
+
+    const hoursRow = document.createElement("div");
+    hoursRow.className = "rules-row";
+    hoursRow.innerHTML = '<span class="label">Hours</span><span class="value"></span>';
+    hoursRow.querySelector(".value").textContent = `${workingHours.open}–${workingHours.close}`;
+    container.appendChild(hoursRow);
+  }
+
+  async function deleteClinicPractitioner(name) {
+    const response = await fetch("/config/clinic", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remove_practitioners: [name] }),
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      alert(`Could not remove: ${body.error}`);
+    }
+    await loadClinicRules();
+  }
+
+  async function deleteRestaurantTable(tableId) {
+    const response = await fetch("/config/restaurant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remove_tables: [tableId] }),
+    });
+    if (!response.ok) {
+      const body = await response.json();
+      alert(`Could not remove: ${body.error}`);
+    }
+    await loadRestaurantRules();
   }
 
   async function loadClinicRules() {
@@ -227,7 +263,12 @@ document.addEventListener("DOMContentLoaded", () => {
     for (const [name, minutes] of Object.entries(body.practitioners)) {
       items[name] = `${minutes} min`;
     }
-    renderRulesDisplay(document.getElementById("clinic-rules-display"), items, body.working_hours);
+    renderRulesDisplay(
+      document.getElementById("clinic-rules-display"),
+      items,
+      body.working_hours,
+      deleteClinicPractitioner
+    );
   }
 
   async function loadRestaurantRules() {
@@ -240,7 +281,8 @@ document.addEventListener("DOMContentLoaded", () => {
     renderRulesDisplay(
       document.getElementById("restaurant-rules-display"),
       items,
-      body.working_hours
+      body.working_hours,
+      deleteRestaurantTable
     );
   }
 

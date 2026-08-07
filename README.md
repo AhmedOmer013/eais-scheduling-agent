@@ -259,9 +259,10 @@ browser. Five tabs:
   files per sector (`audit.clinic.jsonl` / `audit.restaurant.jsonl`), each
   with a "Slot rules" card above the audit table showing that sector's
   practitioners (clinic) or tables (restaurant) and working hours, with
-  an Edit form to add a practitioner/table or change a duration/capacity
-  or the working hours. Additive/corrective only -- no way to remove an
-  existing practitioner or table from this UI.
+  an Edit form to add a practitioner/table, change a duration/capacity
+  or the working hours, and a Delete button on each entry to remove it.
+  The last remaining practitioner/table can't be deleted -- an empty
+  sector would make every booking an automatic violation.
 - **Config** -- view or change the LLM backend (`base_url`/`model`/
   `api_key`/`timeout`) at runtime, without restarting the server. The API
   key is never sent back to the browser as its raw value, only whether
