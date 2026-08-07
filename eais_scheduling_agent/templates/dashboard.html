@@ -2,12 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EAIS Scheduling Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="app-header">
+    <svg class="mark" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2" y="4" width="22" height="20" rx="4" stroke="currentColor" stroke-width="2"/>
+      <path d="M2 10H24" stroke="currentColor" stroke-width="2"/>
+      <path d="M7 2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M19 2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M8 15L11.5 18.5L18 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
     <h1>EAIS Scheduling Agent</h1>
+    <span class="tagline">clinic &amp; restaurant &middot; local</span>
   </header>
 
   <nav class="tab-bar" id="tab-bar">
@@ -31,11 +43,14 @@
         </select>
 
         <label for="text">Request</label>
-        <textarea id="text" name="text" rows="3" placeholder="Dr. A today at 10am, patient John Doe"></textarea>
+        <textarea id="text" name="text" rows="3" placeholder="Put your booking request here"></textarea>
 
         <label class="checkbox-label"><input type="checkbox" id="use-llm" name="llm"> Use LLM intake</label>
 
-        <button type="submit">Book</button>
+        <button type="submit">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8.5L6 12.5L14 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="btn-label">Book</span>
+        </button>
       </form>
       <div id="booking-result" class="result"></div>
     </section>
@@ -43,7 +58,10 @@
     <section id="tab-pending" class="tab-panel">
       <h2>Pending requests</h2>
       <p class="subtitle">Requests that are fully understood but need a human call -- unknown practitioner, over capacity, or a slot conflict.</p>
-      <button type="button" id="refresh-pending">Refresh</button>
+      <button type="button" id="refresh-pending">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 10-1.66 3.95M13.5 8V4.5M13.5 8H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="btn-label">Refresh</span>
+      </button>
       <div id="pending-list" class="card-list"></div>
     </section>
 
@@ -53,7 +71,10 @@
       <div class="slot-rules">
         <h3>Slot rules</h3>
         <div id="clinic-rules-display" class="rules-display"></div>
-        <button type="button" class="toggle-edit" data-target="clinic-rules-form">Edit</button>
+        <button type="button" class="toggle-edit" data-target="clinic-rules-form">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9.5 3.5L12.5 6.5M2 14L2.4 11.2L10.2 3.4A1 1 0 0111.6 3.4L12.6 4.4A1 1 0 0112.6 5.8L4.8 13.6L2 14Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="btn-label">Edit</span>
+        </button>
         <form id="clinic-rules-form" class="rules-form hidden">
           <label for="clinic-practitioner-name">Practitioner name (new or existing)</label>
           <input type="text" id="clinic-practitioner-name" placeholder="Dr. C">
@@ -67,12 +88,18 @@
           <label for="clinic-close">Close (HH:MM)</label>
           <input type="text" id="clinic-close" placeholder="17:00">
 
-          <button type="submit">Save</button>
+          <button type="submit">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8.5L6 12.5L14 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="btn-label">Save</span>
+          </button>
         </form>
         <div id="clinic-rules-result" class="result"></div>
       </div>
 
-      <button type="button" class="refresh-audit" data-sector="clinic">Refresh</button>
+      <button type="button" class="refresh-audit" data-sector="clinic">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 10-1.66 3.95M13.5 8V4.5M13.5 8H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="btn-label">Refresh</span>
+      </button>
       <table class="audit-table">
         <thead>
           <tr><th>Time</th><th>Input</th><th>Decision</th><th>Approval</th></tr>
@@ -87,7 +114,10 @@
       <div class="slot-rules">
         <h3>Slot rules</h3>
         <div id="restaurant-rules-display" class="rules-display"></div>
-        <button type="button" class="toggle-edit" data-target="restaurant-rules-form">Edit</button>
+        <button type="button" class="toggle-edit" data-target="restaurant-rules-form">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9.5 3.5L12.5 6.5M2 14L2.4 11.2L10.2 3.4A1 1 0 0111.6 3.4L12.6 4.4A1 1 0 0112.6 5.8L4.8 13.6L2 14Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="btn-label">Edit</span>
+        </button>
         <form id="restaurant-rules-form" class="rules-form hidden">
           <label for="restaurant-table-id">Table id (new or existing)</label>
           <input type="text" id="restaurant-table-id" placeholder="T6">
@@ -101,12 +131,18 @@
           <label for="restaurant-close">Close (HH:MM)</label>
           <input type="text" id="restaurant-close" placeholder="22:00">
 
-          <button type="submit">Save</button>
+          <button type="submit">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8.5L6 12.5L14 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="btn-label">Save</span>
+          </button>
         </form>
         <div id="restaurant-rules-result" class="result"></div>
       </div>
 
-      <button type="button" class="refresh-audit" data-sector="restaurant">Refresh</button>
+      <button type="button" class="refresh-audit" data-sector="restaurant">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 10-1.66 3.95M13.5 8V4.5M13.5 8H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="btn-label">Refresh</span>
+      </button>
       <table class="audit-table">
         <thead>
           <tr><th>Time</th><th>Input</th><th>Decision</th><th>Approval</th></tr>
@@ -131,16 +167,15 @@
         <label for="timeout">Timeout (seconds)</label>
         <input type="number" id="timeout" name="timeout" step="0.1">
 
-        <button type="submit">Save</button>
+        <button type="submit">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8.5L6 12.5L14 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="btn-label">Save</span>
+        </button>
       </form>
       <div id="config-result" class="result"></div>
     </section>
   </main>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
-
-  <footer>
-    <p>Local prototype, no authentication. Not part of the EAIS-HR-2159-TA-01 assessment submission -- see EXTENSIONS.md.</p>
-  </footer>
 </body>
 </html>

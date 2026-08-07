@@ -26,16 +26,20 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Disables `button` and swaps its label to `loadingLabel` for the
-  // duration of `action()`, restoring the original label afterward.
+  // duration of `action()`, restoring the original label afterward. Targets
+  // a child `.btn-label` span when the button has one (so an icon inside
+  // the button survives the swap); falls back to the whole button's text
+  // otherwise -- unchanged behavior for icon-less buttons.
   async function withLoading(button, loadingLabel, action) {
-    const originalLabel = button.textContent;
+    const labelEl = button.querySelector(".btn-label") || button;
+    const originalLabel = labelEl.textContent;
     button.disabled = true;
-    button.textContent = loadingLabel;
+    labelEl.textContent = loadingLabel;
     try {
       return await action();
     } finally {
       button.disabled = false;
-      button.textContent = originalLabel;
+      labelEl.textContent = originalLabel;
     }
   }
 
@@ -120,8 +124,14 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="text"></div>
       <div class="reason"></div>
       <div class="actions">
-        <button type="button" class="accept">Accept</button>
-        <button type="button" class="reject">Reject</button>
+        <button type="button" class="accept">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="btn-label">Accept</span>
+        </button>
+        <button type="button" class="reject">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span class="btn-label">Reject</span>
+        </button>
       </div>
     `;
     card.querySelector(".meta").textContent = item.sector;
@@ -213,7 +223,10 @@ document.addEventListener("DOMContentLoaded", () => {
       row.className = "rules-row";
       row.innerHTML =
         '<span class="label"></span><span class="value"></span>' +
-        '<button type="button" class="delete-item">Delete</button>';
+        '<button type="button" class="delete-item">' +
+        '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 4.5H13M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5M6.5 7.5V12M9.5 7.5V12M4.5 4.5L5 13a1 1 0 001 1h4a1 1 0 001-1l.5-8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '<span class="btn-label">Delete</span>' +
+        "</button>";
       row.querySelector(".label").textContent = name;
       row.querySelector(".value").textContent = value;
       const deleteButton = row.querySelector(".delete-item");

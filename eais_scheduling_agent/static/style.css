@@ -1,14 +1,45 @@
+/* EAIS Scheduling Agent -- Dispatch Console
+   Redesign 2026-08-07. Operate-mode instrument: a dark instrument header
+   over a light paper canvas, mono data readouts, pill tabs, and a
+   consistent dot+chip status code (confirmed/pending/clarify/error) reused
+   everywhere status appears. See PRODUCT.md for the surface brief. */
+
 :root {
-  --bg: #fdf8f3;
-  --card-bg: #fffefb;
-  --border: #ecd9c4;
-  --accent: #c2703d;
-  --confirmed: #3f8a5c;
-  --muted: #8a7863;
-  --body-text: #3f342a;
-  --clarify-text: #b5786a;
-  --clarify-bg: #f6ece7;
+  --paper: #f2f4f7;
+  --surface: #ffffff;
+  --surface-sunken: #f7f8fa;
+  --border: #dfe3ea;
+  --border-strong: #c7cdd7;
+  --ink: #171b24;
+  --ink-muted: #6b7280;
+  --ink-faint: #9aa1ad;
+
+  --accent: #3454d1;
+  --accent-ink: #24399a;
+  --accent-wash: #eaeefc;
+
+  --confirmed: #17835a;
+  --confirmed-wash: #e5f5ee;
+  --pending: #9a6300;
+  --pending-wash: #fbf0dd;
+  --clarify: #6a4bc4;
+  --clarify-wash: #efeafb;
+  --error: #b4382a;
+  --error-wash: #fbe9e6;
+
+  --header-bg: #12151d;
+  --header-ink: #e7e9ee;
+  --header-ink-muted: #8a90a0;
+
+  --radius-sm: 6px;
   --radius: 10px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 18, 26, 0.06);
+  --shadow: 0 4px 16px rgba(15, 18, 26, 0.07), 0 1px 2px rgba(15, 18, 26, 0.06);
+
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", "Cascadia Mono", ui-monospace, monospace;
 }
 
 * {
@@ -17,59 +48,119 @@
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--body-text);
-  font-family: "Segoe UI", Georgia, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* -- Header -------------------------------------------------------- */
+
 .app-header {
-  padding: 20px 24px 0;
+  background: var(--header-bg);
+  color: var(--header-ink);
+  padding: 18px 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-header .mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  color: var(--accent);
 }
 
 .app-header h1 {
-  font-family: Georgia, serif;
-  font-size: 22px;
-  margin: 0 0 12px;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0;
+  color: var(--header-ink);
 }
+
+.app-header .tagline {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--header-ink-muted);
+  margin-left: auto;
+}
+
+/* -- Tab bar --------------------------------------------------------- */
 
 .tab-bar {
   display: flex;
-  gap: 20px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  padding: 12px 24px;
+  background: var(--header-bg);
+  overflow-x: auto;
 }
 
 .tab-button {
-  background: none;
+  background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  font-size: 14px;
+  border-radius: 999px;
+  color: var(--header-ink-muted);
+  font-size: 13px;
+  font-weight: 600;
   font-family: inherit;
-  padding: 10px 2px;
+  padding: 8px 16px;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tab-button:hover {
+  color: var(--header-ink);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .tab-button.active {
-  color: var(--accent);
-  font-weight: 600;
-  border-bottom-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
 }
 
 .badge {
-  display: inline-block;
-  background: var(--accent);
-  color: #fff;
-  border-radius: 10px;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  border-radius: 999px;
+  padding: 0 5px;
   font-size: 11px;
-  margin-left: 4px;
+  font-family: var(--font-data);
+  margin-left: 6px;
 }
 
+.tab-button.active .badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+/* -- Layout ------------------------------------------------------------ */
+
 main {
-  max-width: 720px;
+  max-width: 880px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 32px 24px 48px;
 }
 
 .tab-panel {
@@ -78,39 +169,77 @@ main {
 
 .tab-panel.active {
   display: block;
+  animation: panel-in 0.18s ease;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel.active {
+    animation: none;
+  }
 }
 
 h2 {
-  font-family: Georgia, serif;
-  font-size: 18px;
-  margin-top: 0;
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
 }
 
 .subtitle {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: -8px;
+  color: var(--ink-muted);
+  font-size: 13.5px;
+  margin: 0 0 20px;
+  max-width: 62ch;
 }
+
+/* -- Forms --------------------------------------------------------- */
 
 form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: var(--card-bg);
+  gap: 14px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
 }
 
 label {
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 
 input[type="text"],
@@ -118,40 +247,102 @@ input[type="password"],
 input[type="number"],
 select,
 textarea {
-  background: var(--card-bg);
+  background: var(--surface-sunken);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-family: inherit;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: var(--font-ui);
   font-size: 14px;
-  color: var(--body-text);
+  color: var(--ink);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+input[type="text"]:hover,
+input[type="password"]:hover,
+input[type="number"]:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--border-strong);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+textarea {
+  resize: vertical;
+  font-family: var(--font-data);
+  font-size: 13.5px;
+}
+
+/* -- Buttons -------------------------------------------------------- */
+
+button {
+  font-family: var(--font-ui);
 }
 
 button[type="submit"],
 #refresh-pending,
 .refresh-audit {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  padding: 10px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.05s ease;
+}
+
+button[type="submit"]:hover,
+#refresh-pending:hover,
+.refresh-audit:hover {
+  background: var(--accent-ink);
+}
+
+button[type="submit"]:active,
+#refresh-pending:active,
+.refresh-audit:active {
+  transform: translateY(1px);
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
+  transform: none;
 }
 
+button svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* -- Result flash ------------------------------------------------------ */
+
 .result {
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
   border-radius: var(--radius);
-  font-size: 14px;
+  font-size: 13.5px;
+  font-family: var(--font-data);
   opacity: 0;
   transition: opacity 0.2s ease;
+}
+
+.result:empty {
+  display: none;
 }
 
 .result.visible {
@@ -159,59 +350,93 @@ button:disabled {
 }
 
 .result.status-confirmed {
-  background: #eaf5ee;
+  background: var(--confirmed-wash);
   color: var(--confirmed);
-  border: 1px solid var(--confirmed);
 }
 
 .result.status-pending {
-  background: #fbeee3;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: var(--pending-wash);
+  color: var(--pending);
 }
 
 .result.status-clarify {
-  background: var(--clarify-bg);
-  color: var(--clarify-text);
-  border: 1px solid var(--clarify-text);
+  background: var(--clarify-wash);
+  color: var(--clarify);
 }
 
 .result.status-error {
-  background: #fbeee3;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: var(--error-wash);
+  color: var(--error);
 }
+
+/* -- Status chip (shared visual language for pending cards, badges) ---- */
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+}
+
+.status-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.status-chip.chip-pending {
+  background: var(--pending-wash);
+  color: var(--pending);
+}
+
+/* -- Pending queue ------------------------------------------------- */
 
 .card-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
 .pending-card {
-  background: var(--card-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .pending-card .meta {
+  font-family: var(--font-data);
   font-size: 11px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--ink-faint);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
 }
 
 .pending-card .text {
-  margin: 6px 0;
-  font-size: 14px;
+  margin: 7px 0 5px;
+  font-size: 14.5px;
+  color: var(--ink);
 }
 
 .pending-card .reason {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: var(--pending);
+  background: var(--pending-wash);
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
 }
 
 .pending-card .actions {
@@ -221,129 +446,223 @@ button:disabled {
 
 .pending-card .accept,
 .pending-card .reject {
-  border-radius: 8px;
-  font-size: 12px;
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
   cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.pending-card .accept:hover,
+.pending-card .reject:hover {
+  filter: brightness(0.94);
 }
 
 .pending-card .accept {
-  background: var(--confirmed);
-  color: #fff;
-  border: none;
+  background: var(--confirmed-wash);
+  color: var(--confirmed);
+  border: 1px solid transparent;
 }
 
 .pending-card .reject {
-  background: #fff;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--border);
 }
 
 .empty-state {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 12px;
+  color: var(--ink-faint);
+  font-size: 13.5px;
+  margin-top: 16px;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
 }
 
+/* -- Slot rules ------------------------------------------------------ */
+
 .slot-rules {
-  background: var(--card-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm);
 }
 
 .slot-rules h3 {
-  font-family: Georgia, serif;
-  font-size: 15px;
-  margin: 0 0 8px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+  margin: 0 0 10px;
 }
 
 .rules-display {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 0 0 10px;
-  font-size: 13px;
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  border-top: 1px solid var(--border);
 }
 
 .rules-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 3px 0;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
 }
 
 .rules-row .label {
-  color: var(--muted);
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .rules-row .value {
   flex: 1;
   text-align: right;
   margin-right: 4px;
+  font-family: var(--font-data);
+  color: var(--ink-muted);
 }
 
 .rules-row .delete-item {
+  display: inline-flex;
+  align-items: center;
   background: none;
-  border: 1px solid var(--border);
-  color: var(--accent);
-  border-radius: 6px;
+  border: none;
+  color: var(--ink-faint);
+  border-radius: var(--radius-sm);
   font-size: 11px;
-  padding: 2px 9px;
+  padding: 4px 6px;
   cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.rules-row .delete-item:hover {
+  color: var(--error);
+  background: var(--error-wash);
 }
 
 .toggle-edit {
-  background: #fff;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 8px;
-  font-size: 12px;
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 13px;
   cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.toggle-edit:hover {
+  border-color: var(--border-strong);
+  background: #fff;
 }
 
 .rules-form {
-  margin-top: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
 }
 
 .rules-form.hidden {
   display: none;
 }
 
+/* -- Audit table ------------------------------------------------------- */
+
 .audit-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 12px;
-  background: var(--card-bg);
+  margin-top: 14px;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
 }
 
 .audit-table th,
 .audit-table td {
   text-align: left;
-  padding: 8px 10px;
-  font-size: 13px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
 }
 
+.audit-table td {
+  font-family: var(--font-data);
+  color: var(--ink);
+}
+
 .audit-table th {
-  color: var(--muted);
-  font-weight: 600;
+  color: var(--ink-muted);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--surface-sunken);
+}
+
+.audit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.audit-table tbody tr:hover td {
+  background: var(--surface-sunken);
 }
 
 .hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ink-faint);
+  font-family: var(--font-data);
 }
 
-footer {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 0 24px 24px;
-  font-size: 12px;
-  color: var(--muted);
+/* -- Small screens ---------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .app-header {
+    padding: 16px 18px;
+  }
+
+  .app-header .tagline {
+    display: none;
+  }
+
+  .tab-bar {
+    padding: 10px 14px;
+  }
+
+  main {
+    padding: 20px 14px 20px;
+  }
+
+  form,
+  .slot-rules {
+    padding: 16px;
+  }
+
+  .audit-table {
+    display: block;
+    overflow-x: auto;
+  }
 }
