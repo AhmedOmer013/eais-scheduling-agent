@@ -190,7 +190,47 @@ _FEW_SHOT_EXAMPLES = (
             "occasion": "anniversary",
         },
     ),
+    # Added to cover two patterns the original four examples didn't:
+    # (1) a genuinely unspecified practitioner/table alongside only a
+    # vague time_period -- the model should omit the un-named field and
+    # the exact clock time it wasn't given, not guess either one; (2)
+    # naming/phrasing variations ("for my daughter X", "reservation under
+    # NAME") that don't lead with the field's own keyword the way every
+    # example above does.
+    (
+        "clinic",
+        "I need to see a doctor sometime tomorrow morning, no preference on who",
+        {"time_period": "morning"},
+    ),
+    (
+        "clinic",
+        "It's for my daughter Emma, book with Dr. Patel this Thursday at 2pm",
+        {"practitioner": "Dr. Patel", "patient_name": "Emma", "start_time": "2026-08-13T14:00:00"},
+    ),
+    (
+        "restaurant",
+        "a table for four people this Wednesday at noon",
+        {"party_size": 4, "start_time": "2026-08-12T12:00:00"},
+    ),
+    (
+        "restaurant",
+        "reservation under Alex, party of 6, Friday dinner",
+        {"party_size": 6, "customer_name": "Alex", "time_period": "dinner"},
+    ),
 )
+
+# The subset of each sector's schema a booking cannot be completed
+# without (see http_api.py's ClinicSkillPack.required_fields /
+# RestaurantSkillPack.required_fields, mirrored here as a plain constant
+# since this module has no skill-pack access -- intake must stay usable
+# offline of any particular sector wiring). Not every sector needs to
+# appear: _build_prompt below skips this emphasis entirely for a sector
+# it doesn't recognize, same "extend without touching core sector
+# neutrality" posture as the rest of this module.
+_CORE_FIELDS_BY_SECTOR = {
+    "clinic": ("practitioner", "start_time", "patient_name"),
+    "restaurant": ("party_size", "start_time", "customer_name"),
+}
 
 _SCHEMA_DESCRIPTION = """\
 Allowed fields and types, by sector:
@@ -246,8 +286,17 @@ def _build_prompt(text: str, sector: str, reference_date: datetime) -> str:
         "this date -- compute them, do not guess.",
         "",
         _SCHEMA_DESCRIPTION,
-        "Examples:",
     ]
+    core_fields = _CORE_FIELDS_BY_SECTOR.get(sector)
+    if core_fields:
+        lines.append(
+            f"For this sector, the fields most critical to extract correctly "
+            f"are: {', '.join(core_fields)} -- a booking cannot be completed "
+            "without them. Still, only include one if you are confident "
+            "about it; omission is always safer than a guess."
+        )
+        lines.append("")
+    lines.append("Examples:")
     for example_sector, example_text, example_output in _FEW_SHOT_EXAMPLES:
         lines.append(f'Sector: {example_sector}\nInput: "{example_text}"')
         lines.append(f"Output: {json.dumps(example_output)}")
