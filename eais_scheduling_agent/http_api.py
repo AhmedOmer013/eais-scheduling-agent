@@ -77,6 +77,12 @@ _MISSING_FIELDS_PREFIX = "missing required field(s): "
 _PENDING_APPROVAL = "PENDING_APPROVAL"
 _NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
 
+# Must stay in sync with the manifest files under
+# eais_scheduling_agent/manifests/ (one <sector>.yaml per sector here).
+# Several places below assume every value in _SECTORS has both a manifest
+# and an audit-by-sector entry: post_booking()'s `audit_by_sector.get(sector,
+# audit_by_sector["clinic"])` fallback, and accept_pending()/reject_pending()'s
+# `skill_packs`/`audit_by_sector` lookups keyed by the item's stored sector.
 _SECTORS = ("clinic", "restaurant")
 
 
@@ -93,12 +99,24 @@ def _sector_audit_path(base: Path, sector: str) -> Path:
 
 
 def _read_audit_records(path: Path) -> list:
+    """Read one JSON record per non-blank line.
+
+    Tolerates a single corrupt/truncated line (e.g. the server process
+    was killed mid-write, leaving the last line half-written): that line
+    is skipped, not treated as a reason to fail the whole read, since
+    every other line is still valid JSON and GET /audit should keep
+    showing them rather than 500ing for the entire dashboard.
+    """
     if not path.is_file():
         return []
     records = []
     for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
+        if not line.strip():
+            continue
+        try:
             records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
     return records
 
 
@@ -152,9 +170,14 @@ def create_app(
         manifest_dir: Directory holding one `<sector>.yaml` manifest per
             sector (default: the package's bundled manifests directory,
             same default `eais-book` uses).
-        audit_file: JSON Lines audit file both `POST /bookings` appends
-            to and `GET /audit` reads back (default: `audit.jsonl`,
-            already git-ignored -- same default `eais-book` uses).
+        audit_file: Base path used to derive each sector's own JSON Lines
+            audit file (default: `audit.jsonl`, already git-ignored --
+            same default `eais-book` uses). Not written to directly:
+            `POST /bookings`/`POST /pending/<id>/accept`/
+            `POST /pending/<id>/reject` append to, and `GET /audit` reads
+            from, the per-sector file `_sector_audit_path` derives from
+            this base (e.g. `audit.jsonl` -> `audit.clinic.jsonl`,
+            `audit.restaurant.jsonl`) -- see that function's docstring.
         pending_file: Path to the JSON file backing the human accept/reject
             queue (default: pending_requests.json, gitignored).
     """

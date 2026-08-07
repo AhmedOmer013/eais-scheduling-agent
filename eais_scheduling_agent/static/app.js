@@ -82,7 +82,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const body = await response.json();
 
       if (response.ok) {
-        const rendered = STATUS_MESSAGES[body.status](body);
+        const renderer = STATUS_MESSAGES[body.status];
+        const rendered = renderer
+          ? renderer(body)
+          : { text: `Unexpected status: ${body.status}`, cls: "status-error" };
         flashResult(bookingResult, rendered.text, rendered.cls);
       } else {
         flashResult(bookingResult, `Error: ${body.error}`, "status-error");
@@ -127,7 +130,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const response = await fetch(`/pending/${item.id}/accept`, { method: "POST" });
         const body = await response.json();
         if (!response.ok) {
-          alert(`Could not accept: ${body.error}`);
+          if (response.status === 422) {
+            alert(
+              `Could not accept: ${body.error}\n\nAdd this practitioner/table under this sector's Slot rules card, then try Accept again.`
+            );
+          } else {
+            alert(`Could not accept: ${body.error}`);
+          }
         }
         await loadPending();
         await refreshPendingBadge();
@@ -136,7 +145,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     card.querySelector(".reject").addEventListener("click", async (event) => {
       await withLoading(event.target, "Rejecting...", async () => {
-        await fetch(`/pending/${item.id}/reject`, { method: "POST" });
+        const response = await fetch(`/pending/${item.id}/reject`, { method: "POST" });
+        const body = await response.json();
+        if (!response.ok) {
+          alert(`Could not reject: ${body.error}`);
+        }
         await loadPending();
         await refreshPendingBadge();
       });
@@ -245,6 +258,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const open = document.getElementById("clinic-open").value.trim();
     const close = document.getElementById("clinic-close").value.trim();
 
+    if ((open !== "") !== (close !== "")) {
+      flashResult(clinicRulesResult, "Enter both open and close, or leave both blank.", "status-error");
+      return;
+    }
+
     const payload = {};
     if (name !== "" && duration !== "") {
       payload.practitioners = { [name]: Number(duration) };
@@ -281,6 +299,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const capacity = document.getElementById("restaurant-table-capacity").value;
     const open = document.getElementById("restaurant-open").value.trim();
     const close = document.getElementById("restaurant-close").value.trim();
+
+    if ((open !== "") !== (close !== "")) {
+      flashResult(
+        restaurantRulesResult,
+        "Enter both open and close, or leave both blank.",
+        "status-error"
+      );
+      return;
+    }
 
     const payload = {};
     if (tableId !== "" && capacity !== "") {

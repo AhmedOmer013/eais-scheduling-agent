@@ -86,7 +86,15 @@ now queued in a file-backed `PendingRequestStore`
 the new Pending tab -- accepting replays the exact
 `slot_rules()`/`check_conflict()`/`persist()` sequence
 `core/orchestrator.py` already uses internally, so acceptance can never
-diverge from the core's own decision logic; (2) requests where intake
+diverge from the core's own decision logic. One consequence of that
+replay: `slot_rules()` still raises for an unknown practitioner or an
+over-capacity table exactly as it does on the original request, so
+Accept 422s for those two cases rather than persisting them as-is --
+only a genuinely computable violation (e.g. outside working hours) or a
+since-resolved conflict can actually be accepted. An unknown-practitioner
+or over-capacity item needs its sector's Slot rules card (add the
+practitioner/table, see (3) below) before Accept will succeed;
+(2) requests where intake
 couldn't extract enough (`missing required field(s): ...`) are now a
 distinct `NEEDS_CLARIFICATION` response instead of being lumped in with
 `PENDING_APPROVAL` -- there's no complete booking to review in that case,
@@ -98,8 +106,9 @@ compatibility. (3) Each sector's slot rules (clinic: practitioners and
 their appointment duration; restaurant: tables and their seat capacity;
 both: working hours) are now viewable and editable from that sector's
 audit tab via `GET/POST /config/clinic` and `GET/POST /config/restaurant`
--- additive/corrective only (add a practitioner, change a duration), no
-deletion. `ClinicSkillPack`/`RestaurantSkillPack` gained one read-only
+-- additive/corrective only (add a practitioner, change a duration for
+clinic; add a table, change a capacity for restaurant), no deletion.
+`ClinicSkillPack`/`RestaurantSkillPack` gained one read-only
 property each (`practitioners`/`tables`, mirroring the existing
 `working_hours` property); all mutation happens by constructing a new
 skill pack instance and swapping it into the `skill_packs` dict

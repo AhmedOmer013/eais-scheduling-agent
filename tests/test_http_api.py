@@ -135,6 +135,50 @@ class TestAuditEndpoint:
         assert records[1]["decision"] == "CONFIRMED"
 
 
+class TestAuditEndpointToleratesCorruptLine:
+    """A killed-mid-write server process could leave the last line of an
+    audit file truncated. GET /audit should skip just that line, not
+    500 for the whole dashboard -- see _read_audit_records.
+    """
+
+    def test_skips_corrupt_line_instead_of_500ing(self, client, tmp_path):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        clinic_audit_path = tmp_path / "audit.clinic.jsonl"
+        with clinic_audit_path.open("a", encoding="utf-8") as f:
+            f.write('{"truncated": "line"\n')  # missing closing brace -- invalid JSON
+
+        response = client.get("/audit?sector=clinic")
+
+        assert response.status_code == 200
+        records = response.get_json()["records"]
+        assert len(records) == 1
+        assert records[0]["decision"] == "CONFIRMED"
+
+    def test_merged_view_also_tolerates_a_corrupt_line(self, client, tmp_path):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm, customer Jane Smith"},
+        )
+
+        restaurant_audit_path = tmp_path / "audit.restaurant.jsonl"
+        with restaurant_audit_path.open("a", encoding="utf-8") as f:
+            f.write("not even close to json\n")
+
+        response = client.get("/audit")
+
+        assert response.status_code == 200
+        records = response.get_json()["records"]
+        assert len(records) == 2
+
+
 class TestSharedStoreAcrossRequests:
     """The one test that exercises the shared-store design decision
     directly: the CLI cannot show this (see tests/test_cli.py -- each
@@ -308,7 +352,9 @@ class TestPerSectorAuditFiles:
 
     def test_records_are_actually_in_separate_files_on_disk(self, tmp_path):
         audit_path = tmp_path / "audit.jsonl"
-        app = create_app(audit_file=str(audit_path))
+        app = create_app(
+            audit_file=str(audit_path), pending_file=str(tmp_path / "pending_requests.json")
+        )
         app.testing = True
         test_client = app.test_client()
 

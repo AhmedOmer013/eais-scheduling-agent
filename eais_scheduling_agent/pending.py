@@ -26,6 +26,16 @@ from typing import List, Optional, Union
 
 
 class PendingRequestStore:
+    """File-backed accept/reject queue -- see this module's docstring.
+
+    Like `core.store.InMemoryBookingStore` (see `http_api.py`'s module
+    docstring), `add`/`remove` are whole-file read-modify-write with no
+    internal locking, so two truly concurrent mutations under the
+    threaded dev server are not guaranteed to serialize correctly and one
+    could be lost -- a known, documented limitation of this prototype,
+    not something this class guards against with a lock.
+    """
+
     def __init__(self, path: Union[str, Path]) -> None:
         self.path = Path(path)
 
