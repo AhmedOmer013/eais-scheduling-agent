@@ -427,7 +427,7 @@ class TestNeedsClarification:
         assert response.status_code == 200
         body = response.get_json()
         assert body["status"] == "NEEDS_CLARIFICATION"
-        assert "missing required field(s):" in body["reason"]
+        assert "missing:" in body["reason"]
 
     def test_unknown_practitioner_is_still_pending_approval_not_clarification(self, client):
         response = client.post(
@@ -441,6 +441,58 @@ class TestNeedsClarification:
         body = response.get_json()
         assert body["status"] == "PENDING_APPROVAL"
         assert "unknown practitioner" in body["reason"]
+
+
+class TestFriendlyClarificationMessage:
+    """The raw core/gate.py reason ("missing required field(s): patient_name")
+    names fields by their internal key, not a name a non-technical user
+    would recognize. These tests verify NEEDS_CLARIFICATION translates
+    that into plain language: what this sector's bookings need, and
+    exactly which of those is actually missing -- not the full required
+    set redundantly, and not raw field keys like "patient_name".
+    """
+
+    def test_clinic_lists_only_the_actually_missing_field(self, client):
+        response = client.post(
+            "/bookings", json={"sector": "clinic", "text": "Dr. A today at 10am"}
+        )
+        body = response.get_json()
+        assert body["status"] == "NEEDS_CLARIFICATION"
+        assert "doctor's name" in body["reason"]
+        assert "timing" in body["reason"]
+        assert "patient's name" in body["reason"]
+
+        missing_clause = body["reason"].split("missing:")[1]
+        assert "patient's name" in missing_clause
+        assert "doctor's name" not in missing_clause
+        assert "timing" not in missing_clause
+
+    def test_restaurant_lists_only_the_actually_missing_field(self, client):
+        response = client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm"},
+        )
+        body = response.get_json()
+        assert body["status"] == "NEEDS_CLARIFICATION"
+        assert "party size" in body["reason"]
+        assert "name on the booking" in body["reason"]
+        assert "timing" in body["reason"]
+
+        missing_clause = body["reason"].split("missing:")[1]
+        assert "name on the booking" in missing_clause
+        assert "party size" not in missing_clause
+
+    def test_clinic_all_fields_missing_lists_all_three(self, client):
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "book me in with the doctor tomorrow"},
+        )
+        body = response.get_json()
+
+        missing_clause = body["reason"].split("missing:")[1]
+        assert "doctor's name" in missing_clause
+        assert "timing" in missing_clause
+        assert "patient's name" in missing_clause
 
 
 class TestPendingQueueWrite:

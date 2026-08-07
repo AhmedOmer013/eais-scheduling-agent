@@ -60,7 +60,10 @@ document.addEventListener("DOMContentLoaded", () => {
       cls: "status-pending",
     }),
     NEEDS_CLARIFICATION: (body) => ({
-      text: `We couldn't quite process that -- ${body.reason.replace("missing required field(s): ", "missing: ")}. Try rephrasing with more detail.`,
+      // body.reason is already a complete, friendly sentence built
+      // server-side (see http_api.py's _build_clarification_message) --
+      // no client-side string surgery needed here anymore.
+      text: `We couldn't quite process that -- ${body.reason}`,
       cls: "status-clarify",
     }),
   };
