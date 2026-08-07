@@ -180,21 +180,40 @@ or, if the console script is not on `PATH` (same Windows caveat as
 python -c "from eais_scheduling_agent.http_api import run; run()"
 ```
 
-Two endpoints, both exercising the exact same `SchedulingAgentCore` the
-CLI uses -- no separate decision logic:
+Nine endpoints, all exercising the exact same `SchedulingAgentCore` the
+CLI uses -- no separate decision logic (see `eais_scheduling_agent/http_api.py`
+for the authoritative list and exact request/response shapes):
 
 - `POST /bookings` -- body `{"sector": "clinic", "text": "...", "llm": false}`
   (`llm` optional, defaults to `false`). Returns `{"status": "CONFIRMED",
-  "message": "..."}` or `{"status": "PENDING_APPROVAL", "reason": "..."}`.
-  An unrecognized sector returns `404`; a malformed body returns `400`.
-- `GET /audit` -- returns `{"records": [...]}`, the same JSON Lines
-  audit records `eais-book` writes, read back as a JSON array. Reads the
+  "message": "..."}`, `{"status": "PENDING_APPROVAL", "reason": "..."}`, or
+  `{"status": "NEEDS_CLARIFICATION", "reason": "..."}` (intake couldn't
+  extract enough from the text). An unrecognized sector returns `404`; a
+  malformed body returns `400`.
+- `GET /audit` -- returns `{"records": [...]}`. Each sector's requests are
+  now recorded to a genuinely separate file (`audit.clinic.jsonl` /
+  `audit.restaurant.jsonl`, derived from the server's own `--audit-file`
+  base), completely separate from the CLI's own `audit.jsonl` -- the CLI's
+  audit trail is unaffected by anything the server writes. An optional
+  `?sector=clinic|restaurant` query param restricts the response to that
+  sector's file; omitting it returns the merged, chronologically-sorted
+  view across both sectors, kept for backward compatibility. Reads the
   whole file from disk on every call, with no pagination or auth; since
-  `audit.jsonl` is shared with the CLI's default output file and
-  persists across server restarts, this can show records from previous
-  server runs and separate `eais-book` CLI invocations too -- even
-  though the in-memory booking store itself resets on every restart, so
-  `/audit` can list confirmed bookings the store has no memory of.
+  each sector's audit file persists across server restarts, this can show
+  records from previous server runs -- even though the in-memory booking
+  store itself resets on every restart, so `/audit` can list confirmed
+  bookings the store has no memory of.
+- `GET /pending` -- returns `{"items": [...]}`, the human accept/reject
+  queue (optionally filtered with `?sector=clinic|restaurant`).
+- `POST /pending/<id>/accept` -- accepts a queued item as a real confirmed
+  booking. See "Web dashboard" below for when this can 422.
+- `POST /pending/<id>/reject` -- discards a queued item, logged to the
+  audit trail.
+- `GET /config` / `POST /config` -- view or change the LLM backend config
+  at runtime.
+- `GET /config/clinic` / `POST /config/clinic` and `GET /config/restaurant`
+  / `POST /config/restaurant` -- view or change that sector's slot rules
+  (practitioners/tables, durations/capacities, working hours) at runtime.
 
 ```
 $ curl -X POST http://127.0.0.1:5000/bookings \
@@ -217,14 +236,38 @@ truly concurrent requests are not guaranteed to serialize correctly.
 ## Web dashboard (optional)
 
 With the server running (see above), open `http://127.0.0.1:5000/` in a
-browser for a simple dashboard: make a booking, view the audit trail, and
-view/change the LLM backend config for the running server.
+browser. Five tabs:
 
-- `GET /config` / `POST /config` -- view or change `base_url`/`model`/
-  `api_key`/`timeout` at runtime, without restarting the server. The API
+- **Book** -- make a booking. Three possible outcomes, each styled
+  distinctly: Confirmed (green), sent for human review (terracotta,
+  violation/conflict cases), or needs clarification (rose, when intake
+  couldn't extract enough from the text -- an inline message, not queued
+  anywhere).
+- **Pending** -- requests with a complete, understood booking that needs
+  a human's judgment call (unknown practitioner, over capacity, slot
+  conflict). Reject always discards it, logged to the audit trail. Accept
+  replays the sector's own rule check, so it can only persist an item as
+  a real confirmed booking if that check now passes: a genuinely
+  computable violation (e.g. outside working hours) or a since-resolved
+  slot conflict can be accepted as-is, but an unknown-practitioner or
+  over-capacity item still fails validation and comes back `422` --
+  add the practitioner/table first via that sector's Slot rules card
+  (Audit: Clinic / Audit: Restaurant tab), then Accept again. Both
+  Accept and Reject are logged to the audit trail. Survives a server
+  restart (file-backed, unlike the in-memory booking store).
+- **Audit: Clinic** / **Audit: Restaurant** -- genuinely separate audit
+  files per sector (`audit.clinic.jsonl` / `audit.restaurant.jsonl`), each
+  with a "Slot rules" card above the audit table showing that sector's
+  practitioners (clinic) or tables (restaurant) and working hours, with
+  an Edit form to add a practitioner/table or change a duration/capacity
+  or the working hours. Additive/corrective only -- no way to remove an
+  existing practitioner or table from this UI.
+- **Config** -- view or change the LLM backend (`base_url`/`model`/
+  `api_key`/`timeout`) at runtime, without restarting the server. The API
   key is never sent back to the browser as its raw value, only whether
-  one is currently set (`api_key_set: true`/`false`).
-- Not part of the assessment brief's scope -- see `EXTENSIONS.md`.
+  one is currently set.
+
+Not part of the assessment brief's scope -- see `EXTENSIONS.md`.
 
 ## Run everything with one command (optional)
 

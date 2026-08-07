@@ -24,7 +24,8 @@ from eais_scheduling_agent.http_api import create_app
 @pytest.fixture
 def client(tmp_path):
     audit_path = tmp_path / "audit.jsonl"
-    app = create_app(audit_file=str(audit_path))
+    pending_path = tmp_path / "pending_requests.json"
+    app = create_app(audit_file=str(audit_path), pending_file=str(pending_path))
     app.testing = True
     return app.test_client()
 
@@ -132,6 +133,50 @@ class TestAuditEndpoint:
         assert len(records) == 2
         assert records[0]["decision"] == "CONFIRMED"
         assert records[1]["decision"] == "CONFIRMED"
+
+
+class TestAuditEndpointToleratesCorruptLine:
+    """A killed-mid-write server process could leave the last line of an
+    audit file truncated. GET /audit should skip just that line, not
+    500 for the whole dashboard -- see _read_audit_records.
+    """
+
+    def test_skips_corrupt_line_instead_of_500ing(self, client, tmp_path):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        clinic_audit_path = tmp_path / "audit.clinic.jsonl"
+        with clinic_audit_path.open("a", encoding="utf-8") as f:
+            f.write('{"truncated": "line"\n')  # missing closing brace -- invalid JSON
+
+        response = client.get("/audit?sector=clinic")
+
+        assert response.status_code == 200
+        records = response.get_json()["records"]
+        assert len(records) == 1
+        assert records[0]["decision"] == "CONFIRMED"
+
+    def test_merged_view_also_tolerates_a_corrupt_line(self, client, tmp_path):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm, customer Jane Smith"},
+        )
+
+        restaurant_audit_path = tmp_path / "audit.restaurant.jsonl"
+        with restaurant_audit_path.open("a", encoding="utf-8") as f:
+            f.write("not even close to json\n")
+
+        response = client.get("/audit")
+
+        assert response.status_code == 200
+        records = response.get_json()["records"]
+        assert len(records) == 2
 
 
 class TestSharedStoreAcrossRequests:
@@ -275,8 +320,71 @@ class TestDashboardPage:
         assert response.status_code == 200
         html = response.get_data(as_text=True)
         assert 'id="booking-form"' in html
-        assert 'id="audit-table"' in html
+        assert 'id="audit-body-clinic"' in html
+        assert 'id="audit-body-restaurant"' in html
         assert 'id="config-form"' in html
+
+
+class TestPerSectorAuditFiles:
+    def test_sector_filter_returns_only_that_sectors_records(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm, customer Jane Smith"},
+        )
+
+        clinic_response = client.get("/audit?sector=clinic")
+        restaurant_response = client.get("/audit?sector=restaurant")
+
+        clinic_records = clinic_response.get_json()["records"]
+        restaurant_records = restaurant_response.get_json()["records"]
+        assert len(clinic_records) == 1
+        assert "John Doe" in clinic_records[0]["input"]
+        assert len(restaurant_records) == 1
+        assert "Jane Smith" in restaurant_records[0]["input"]
+
+    def test_unknown_sector_returns_400(self, client):
+        response = client.get("/audit?sector=veterinary")
+        assert response.status_code == 400
+
+    def test_records_are_actually_in_separate_files_on_disk(self, tmp_path):
+        audit_path = tmp_path / "audit.jsonl"
+        app = create_app(
+            audit_file=str(audit_path), pending_file=str(tmp_path / "pending_requests.json")
+        )
+        app.testing = True
+        test_client = app.test_client()
+
+        test_client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        assert (tmp_path / "audit.clinic.jsonl").is_file()
+        assert not (tmp_path / "audit.restaurant.jsonl").is_file()
+
+    def test_no_sector_param_still_returns_merged_chronological_list(self, client):
+        # Backward compatibility: this is the existing
+        # TestAuditEndpoint::test_returns_one_record_per_request behavior,
+        # re-asserted here as a named regression guard for the sector split.
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 4 today at 6pm, customer Jane Smith"},
+        )
+
+        response = client.get("/audit")
+        records = response.get_json()["records"]
+
+        assert len(records) == 2
+        assert records[0]["input"] == "Dr. A today at 10am, patient John Doe"
+        assert records[1]["input"] == "table for 4 today at 6pm, customer Jane Smith"
 
 
 class TestConfigOverrideReachesBookingRequest:
@@ -308,3 +416,267 @@ class TestConfigOverrideReachesBookingRequest:
         assert response.status_code == 200
         assert captured["base_url"] == "http://example.invalid/v1"
         assert captured["model"] == "custom-test-model"
+
+
+class TestNeedsClarification:
+    def test_missing_required_field_returns_needs_clarification(self, client):
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "book me in with the doctor tomorrow"},
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["status"] == "NEEDS_CLARIFICATION"
+        assert "missing required field(s):" in body["reason"]
+
+    def test_unknown_practitioner_is_still_pending_approval_not_clarification(self, client):
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "clinic",
+                "text": "Dr. Chen today at 10am, patient John Doe",
+            },
+        )
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["status"] == "PENDING_APPROVAL"
+        assert "unknown practitioner" in body["reason"]
+
+
+class TestPendingQueueWrite:
+    def test_violation_is_queued_and_missing_fields_is_not(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "book me in with the doctor tomorrow"},
+        )
+
+        response = client.get("/pending")
+        items = response.get_json()["items"]
+
+        assert len(items) == 1
+        assert "unknown practitioner" in items[0]["reason"]
+        assert items[0]["sector"] == "clinic"
+
+    def test_confirmed_booking_is_not_queued(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. A today at 10am, patient John Doe"},
+        )
+
+        response = client.get("/pending")
+        assert response.get_json()["items"] == []
+
+    def test_sector_filter(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+        client.post(
+            "/bookings",
+            json={"sector": "restaurant", "text": "table for 99 today at 6pm, customer Jane Smith"},
+        )
+
+        clinic_items = client.get("/pending?sector=clinic").get_json()["items"]
+        restaurant_items = client.get("/pending?sector=restaurant").get_json()["items"]
+
+        assert len(clinic_items) == 1
+        assert len(restaurant_items) == 1
+        assert clinic_items[0]["sector"] == "clinic"
+        assert restaurant_items[0]["sector"] == "restaurant"
+
+    def test_unknown_sector_filter_returns_400(self, client):
+        response = client.get("/pending?sector=veterinary")
+        assert response.status_code == 400
+
+
+class TestAcceptPendingRequest:
+    def _queue_one(self, client, text="Dr. A today at 6am, patient John Doe"):
+        client.post("/bookings", json={"sector": "clinic", "text": text})
+        # Match by `text` rather than indexing items[0]: some tests in this
+        # class queue two items in the same run, and PendingRequestStore.list()
+        # returns items in insertion order, so items[0] would keep resolving
+        # to the *first* queued item instead of the one just queued here.
+        items = client.get("/pending").get_json()["items"]
+        return next(item["id"] for item in items if item["text"] == text)
+
+    def test_accept_confirms_persists_and_removes_from_queue(self, client):
+        request_id = self._queue_one(client)
+
+        response = client.post(f"/pending/{request_id}/accept")
+
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["status"] == "CONFIRMED"
+        assert "John Doe" in body["message"]
+        assert client.get("/pending").get_json()["items"] == []
+
+    def test_accept_writes_a_confirmed_audit_record(self, client):
+        request_id = self._queue_one(client)
+        client.post(f"/pending/{request_id}/accept")
+
+        records = client.get("/audit?sector=clinic").get_json()["records"]
+
+        confirmed = [r for r in records if r["approval_status"] == "approved"]
+        assert len(confirmed) == 1
+        assert confirmed[0]["decision"] == "CONFIRMED"
+
+    def test_accept_unknown_id_returns_404(self, client):
+        response = client.post("/pending/does-not-exist/accept")
+        assert response.status_code == 404
+
+    def test_accept_twice_returns_404_the_second_time(self, client):
+        request_id = self._queue_one(client)
+        client.post(f"/pending/{request_id}/accept")
+
+        response = client.post(f"/pending/{request_id}/accept")
+
+        assert response.status_code == 404
+
+    def test_accept_a_now_conflicting_slot_returns_409_and_stays_pending(self, client):
+        first_id = self._queue_one(client, text="Dr. A today at 6am, patient John Doe")
+        second_id = self._queue_one(client, text="Dr. A today at 6am, patient Jane Roe")
+        client.post(f"/pending/{first_id}/accept")  # takes the slot
+
+        response = client.post(f"/pending/{second_id}/accept")
+
+        assert response.status_code == 409
+        assert client.get(f"/pending").get_json()["items"][0]["id"] == second_id
+
+    def test_accept_unknown_practitioner_returns_422_and_stays_pending(self, client):
+        request_id = self._queue_one(client, text="Dr. Chen today at 10am, patient John Doe")
+
+        response = client.post(f"/pending/{request_id}/accept")
+
+        assert response.status_code == 422
+        items = client.get("/pending").get_json()["items"]
+        assert len(items) == 1
+        assert items[0]["id"] == request_id
+
+
+class TestRejectPendingRequest:
+    def _queue_one(self, client):
+        client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. Chen today at 10am, patient John Doe"},
+        )
+        return client.get("/pending").get_json()["items"][0]["id"]
+
+    def test_reject_removes_from_queue_and_persists_nothing(self, client):
+        request_id = self._queue_one(client)
+
+        response = client.post(f"/pending/{request_id}/reject")
+
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "REJECTED"
+        assert client.get("/pending").get_json()["items"] == []
+
+    def test_reject_writes_a_rejected_audit_record(self, client):
+        request_id = self._queue_one(client)
+        client.post(f"/pending/{request_id}/reject")
+
+        records = client.get("/audit?sector=clinic").get_json()["records"]
+
+        rejected = [r for r in records if r["approval_status"] == "rejected"]
+        assert len(rejected) == 1
+
+    def test_reject_unknown_id_returns_404(self, client):
+        response = client.post("/pending/does-not-exist/reject")
+        assert response.status_code == 404
+
+
+class TestClinicConfigEndpoint:
+    def test_get_returns_current_practitioners_and_hours(self, client):
+        response = client.get("/config/clinic")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+        assert body["working_hours"] == {"open": "09:00", "close": "17:00"}
+
+    def test_post_adds_a_new_practitioner(self, client):
+        response = client.post("/config/clinic", json={"practitioners": {"Dr. C": 25}})
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["practitioners"] == {"Dr. A": 30, "Dr. B": 20, "Dr. C": 25}
+
+    def test_post_changes_an_existing_practitioners_duration(self, client):
+        client.post("/config/clinic", json={"practitioners": {"Dr. A": 45}})
+        response = client.get("/config/clinic")
+        assert response.get_json()["practitioners"]["Dr. A"] == 45
+
+    def test_post_new_practitioner_is_immediately_bookable(self, client):
+        client.post("/config/clinic", json={"practitioners": {"Dr. C": 25}})
+
+        response = client.post(
+            "/bookings",
+            json={"sector": "clinic", "text": "Dr. C today at 10am, patient John Doe"},
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+
+    def test_post_changes_working_hours(self, client):
+        response = client.post(
+            "/config/clinic", json={"working_hours": {"open": "08:00", "close": "12:00"}}
+        )
+        assert response.status_code == 200
+        assert response.get_json()["working_hours"] == {"open": "08:00", "close": "12:00"}
+
+    def test_post_rejects_non_object_body(self, client):
+        response = client.post("/config/clinic", json="not an object")
+        assert response.status_code == 400
+
+    def test_post_rejects_non_dict_practitioners(self, client):
+        response = client.post("/config/clinic", json={"practitioners": "Dr. C"})
+        assert response.status_code == 400
+
+    def test_post_rejects_non_positive_duration(self, client):
+        response = client.post("/config/clinic", json={"practitioners": {"Dr. C": 0}})
+        assert response.status_code == 400
+
+    def test_post_with_empty_practitioners_object_is_a_no_op_merge(self, client):
+        # Merge semantics (see Step 8): {} has nothing to update, so the
+        # current config comes back unchanged -- not an error, since {}
+        # is a valid "no additions" request, not an attempt to empty it.
+        response = client.post("/config/clinic", json={"practitioners": {}})
+        assert response.status_code == 200
+        assert response.get_json()["practitioners"] == {"Dr. A": 30, "Dr. B": 20}
+
+    def test_post_rejects_malformed_working_hours(self, client):
+        response = client.post(
+            "/config/clinic", json={"working_hours": {"open": "not-a-time", "close": "17:00"}}
+        )
+        assert response.status_code == 400
+
+
+class TestRestaurantConfigEndpoint:
+    def test_get_returns_current_tables_and_hours(self, client):
+        response = client.get("/config/restaurant")
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["tables"] == {"T1": 2, "T2": 2, "T3": 4, "T4": 6, "T5": 8}
+        assert body["working_hours"] == {"open": "11:00", "close": "22:00"}
+
+    def test_post_adds_a_new_table(self, client):
+        response = client.post("/config/restaurant", json={"tables": {"T6": 12}})
+        assert response.status_code == 200
+        assert response.get_json()["tables"]["T6"] == 12
+
+    def test_post_new_table_is_immediately_bookable(self, client):
+        client.post("/config/restaurant", json={"tables": {"T6": 20}})
+
+        response = client.post(
+            "/bookings",
+            json={
+                "sector": "restaurant",
+                "text": "table for 15 today at 6pm, customer Jane Smith",
+            },
+        )
+
+        assert response.get_json()["status"] == "CONFIRMED"
+
+    def test_post_rejects_non_positive_capacity(self, client):
+        response = client.post("/config/restaurant", json={"tables": {"T6": -1}})
+        assert response.status_code == 400

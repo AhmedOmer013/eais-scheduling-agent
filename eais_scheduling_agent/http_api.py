@@ -47,6 +47,7 @@ submitted again after midnight.
 """
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
 
@@ -55,6 +56,7 @@ from flask import Flask, jsonify, render_template, request
 from eais_scheduling_agent import wiring
 from eais_scheduling_agent.core.audit import JsonLinesAuditTrail
 from eais_scheduling_agent.core.gate import StandardApprovalGate
+from eais_scheduling_agent.core.models import AuditRecord, BookingRequest
 from eais_scheduling_agent.core.orchestrator import (
     InvalidManifestError,
     OrchestrationError,
@@ -66,8 +68,70 @@ from eais_scheduling_agent.core.orchestrator import (
 from eais_scheduling_agent.core.store import InMemoryBookingStore
 from eais_scheduling_agent.intake.llm import LLMIntake, OpenAICompatibleHTTPClient
 from eais_scheduling_agent.intake.offline import OfflineIntake
+from eais_scheduling_agent.pending import PendingRequestStore
+from eais_scheduling_agent.skillpacks.clinic import ClinicSkillPack
+from eais_scheduling_agent.skillpacks.restaurant import RestaurantSkillPack
 
 _CONFIRMED = "CONFIRMED"
+_MISSING_FIELDS_PREFIX = "missing required field(s): "
+_PENDING_APPROVAL = "PENDING_APPROVAL"
+_NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
+
+# Must stay in sync with the manifest files under
+# eais_scheduling_agent/manifests/ (one <sector>.yaml per sector here).
+# Several places below assume every value in _SECTORS has both a manifest
+# and an audit-by-sector entry: post_booking()'s `audit_by_sector.get(sector,
+# audit_by_sector["clinic"])` fallback, and accept_pending()/reject_pending()'s
+# `skill_packs`/`audit_by_sector` lookups keyed by the item's stored sector.
+_SECTORS = ("clinic", "restaurant")
+
+
+def _sector_audit_path(base: Path, sector: str) -> Path:
+    """Derive a per-sector audit file path from the base `audit_file`.
+
+    `audit.jsonl` -> `audit.clinic.jsonl`. A base with no suffix (e.g.
+    `audit`) becomes `audit.clinic` -- still unambiguous, just without an
+    extension. Keeps `create_app(audit_file=...)`'s existing single-path
+    argument working unchanged (see tests/test_http_api.py's `client`
+    fixture) while giving each sector a genuinely separate file.
+    """
+    return base.with_name(f"{base.stem}.{sector}{base.suffix}")
+
+
+def _read_audit_records(path: Path) -> list:
+    """Read one JSON record per non-blank line.
+
+    Tolerates a single corrupt/truncated line (e.g. the server process
+    was killed mid-write, leaving the last line half-written): that line
+    is skipped, not treated as a reason to fail the whole read, since
+    every other line is still valid JSON and GET /audit should keep
+    showing them rather than 500ing for the entire dashboard.
+    """
+    if not path.is_file():
+        return []
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return records
+
+
+def _pending_item_to_json(item: dict) -> dict:
+    """`PendingRequestStore.list()` returns real `datetime` objects inside
+    `fields` (see that module's docstring) -- Flask's `jsonify` cannot
+    serialize those directly, so this converts just that one field back
+    to a string for the HTTP response.
+    """
+    result = dict(item)
+    fields = dict(result["fields"])
+    if isinstance(fields.get("start_time"), datetime):
+        fields["start_time"] = fields["start_time"].isoformat()
+    result["fields"] = fields
+    return result
 
 
 class _RuntimeLLMConfig:
@@ -98,6 +162,7 @@ class _RuntimeLLMConfig:
 def create_app(
     manifest_dir: Union[str, Path] = wiring.DEFAULT_MANIFEST_DIR,
     audit_file: Union[str, Path] = "audit.jsonl",
+    pending_file: Union[str, Path] = "pending_requests.json",
 ) -> Flask:
     """Build a Flask app with a shared store/gate/audit for its whole lifetime.
 
@@ -105,17 +170,29 @@ def create_app(
         manifest_dir: Directory holding one `<sector>.yaml` manifest per
             sector (default: the package's bundled manifests directory,
             same default `eais-book` uses).
-        audit_file: JSON Lines audit file both `POST /bookings` appends
-            to and `GET /audit` reads back (default: `audit.jsonl`,
-            already git-ignored -- same default `eais-book` uses).
+        audit_file: Base path used to derive each sector's own JSON Lines
+            audit file (default: `audit.jsonl`, already git-ignored --
+            same default `eais-book` uses). Not written to directly:
+            `POST /bookings`/`POST /pending/<id>/accept`/
+            `POST /pending/<id>/reject` append to, and `GET /audit` reads
+            from, the per-sector file `_sector_audit_path` derives from
+            this base (e.g. `audit.jsonl` -> `audit.clinic.jsonl`,
+            `audit.restaurant.jsonl`) -- see that function's docstring.
+        pending_file: Path to the JSON file backing the human accept/reject
+            queue (default: pending_requests.json, gitignored).
     """
     app = Flask(__name__)
 
     skill_packs = wiring.build_skill_packs()
     gate = StandardApprovalGate()
     store = InMemoryBookingStore()
-    audit = JsonLinesAuditTrail(path=audit_file)
+    audit_base = Path(audit_file)
+    audit_by_sector = {
+        sector: JsonLinesAuditTrail(path=str(_sector_audit_path(audit_base, sector)))
+        for sector in _SECTORS
+    }
     runtime_config = _RuntimeLLMConfig()
+    pending_store = PendingRequestStore(path=pending_file)
 
     @app.get("/")
     def dashboard():
@@ -159,7 +236,7 @@ def create_app(
             intake=intake,
             gate=gate,
             store=store,
-            audit=audit,
+            audit=audit_by_sector.get(sector, audit_by_sector["clinic"]),
         )
 
         try:
@@ -180,23 +257,102 @@ def create_app(
             message = wiring.render_confirmation(skill_pack, booking_request)
             return jsonify({"status": _CONFIRMED, "message": message}), 200
 
-        return jsonify({"status": "PENDING_APPROVAL", "reason": decision.reason}), 200
+        if decision.reason.startswith(_MISSING_FIELDS_PREFIX):
+            return jsonify({"status": _NEEDS_CLARIFICATION, "reason": decision.reason}), 200
+
+        manifest = wiring.load_manifest_for_render(manifest_dir, sector)
+        booking_request = intake.parse(text, sector)  # cache hit
+        pending_store.add(
+            sector=sector,
+            text=text,
+            fields=booking_request.fields,
+            skill_pack=manifest.skill_pack,
+            reason=decision.reason,
+        )
+        return jsonify({"status": _PENDING_APPROVAL, "reason": decision.reason}), 200
+
+    @app.get("/pending")
+    def get_pending():
+        sector = request.args.get("sector")
+        if sector is not None and sector not in _SECTORS:
+            return jsonify({"error": f"unknown sector: {sector!r}"}), 400
+
+        items = pending_store.list(sector=sector)
+        return jsonify({"items": [_pending_item_to_json(item) for item in items]}), 200
+
+    @app.post("/pending/<request_id>/accept")
+    def accept_pending(request_id):
+        item = pending_store.get(request_id)
+        if item is None:
+            return jsonify({"error": f"no pending request with id {request_id!r}"}), 404
+
+        booking_request = BookingRequest(
+            sector=item["sector"], fields=item["fields"], raw_text=item["text"]
+        )
+        skill_pack = skill_packs[item["skill_pack"]]
+        try:
+            slot = skill_pack.slot_rules(booking_request)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 422
+
+        if store.check_conflict(booking_request, slot):
+            return (
+                jsonify({"error": "requested slot now conflicts with an existing booking"}),
+                409,
+            )
+
+        store.persist(booking_request, slot)
+        audit_by_sector[item["sector"]].append(
+            AuditRecord(
+                input=item["text"],
+                skill_pack=item["skill_pack"],
+                intent=dict(item["fields"]),
+                rules_evaluated=[f"human override: accepted (was: {item['reason']})"],
+                decision=_CONFIRMED,
+                approval_status="approved",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        pending_store.remove(request_id)
+
+        message = wiring.render_confirmation(skill_pack, booking_request)
+        return jsonify({"status": _CONFIRMED, "message": message}), 200
+
+    @app.post("/pending/<request_id>/reject")
+    def reject_pending(request_id):
+        item = pending_store.get(request_id)
+        if item is None:
+            return jsonify({"error": f"no pending request with id {request_id!r}"}), 404
+
+        audit_by_sector[item["sector"]].append(
+            AuditRecord(
+                input=item["text"],
+                skill_pack=item["skill_pack"],
+                intent=dict(item["fields"]),
+                rules_evaluated=[f"human override: rejected (was: {item['reason']})"],
+                decision=_PENDING_APPROVAL,
+                approval_status="rejected",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        pending_store.remove(request_id)
+
+        return jsonify({"status": "REJECTED"}), 200
 
     @app.get("/audit")
     def get_audit():
-        # Reads the whole audit file from disk on every call -- no
-        # pagination, no auth. `audit_file` is shared with the CLI's
-        # default output file and persists across server restarts, so
-        # this can surface records from previous server runs and from
-        # separate `eais-book` CLI invocations, even though the
-        # in-memory `store` above resets on every restart -- i.e. this
-        # can list CONFIRMED bookings `store` itself has no memory of.
-        path = Path(audit_file)
-        records = []
-        if path.is_file():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
-                    records.append(json.loads(line))
+        sector = request.args.get("sector")
+        if sector is not None and sector not in _SECTORS:
+            return jsonify({"error": f"unknown sector: {sector!r}"}), 400
+
+        if sector is not None:
+            records = _read_audit_records(_sector_audit_path(audit_base, sector))
+        else:
+            records = []
+            for s in _SECTORS:
+                records.extend(_read_audit_records(_sector_audit_path(audit_base, s)))
+            records.sort(key=lambda r: r["timestamp"])
+
         return jsonify({"records": records}), 200
 
     @app.get("/config")
@@ -263,6 +419,94 @@ def create_app(
             ),
             200,
         )
+
+    @app.get("/config/clinic")
+    def get_clinic_config():
+        pack = skill_packs["clinic_v1"]
+        return jsonify({"practitioners": pack.practitioners, "working_hours": pack.working_hours}), 200
+
+    @app.post("/config/clinic")
+    def post_clinic_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        current = skill_packs["clinic_v1"]
+        practitioners = dict(current.practitioners)
+        if "practitioners" in body:
+            new_entries = body["practitioners"]
+            valid = isinstance(new_entries, dict) and all(
+                isinstance(name, str)
+                and isinstance(minutes, int)
+                and not isinstance(minutes, bool)
+                and minutes > 0
+                for name, minutes in new_entries.items()
+            )
+            if not valid:
+                return (
+                    jsonify(
+                        {"error": "'practitioners' must be an object of name -> positive integer minutes"}
+                    ),
+                    400,
+                )
+            practitioners.update(new_entries)
+
+        working_hours = dict(current.working_hours)
+        if "working_hours" in body:
+            if not isinstance(body["working_hours"], dict):
+                return jsonify({"error": "'working_hours' must be an object with 'open'/'close'"}), 400
+            working_hours = body["working_hours"]
+
+        try:
+            new_pack = ClinicSkillPack(practitioners=practitioners, working_hours=working_hours)
+        except (ValueError, KeyError) as exc:
+            return jsonify({"error": f"invalid config: {exc}"}), 400
+
+        skill_packs["clinic_v1"] = new_pack
+        return jsonify({"practitioners": new_pack.practitioners, "working_hours": new_pack.working_hours}), 200
+
+    @app.get("/config/restaurant")
+    def get_restaurant_config():
+        pack = skill_packs["restaurant_v1"]
+        return jsonify({"tables": pack.tables, "working_hours": pack.working_hours}), 200
+
+    @app.post("/config/restaurant")
+    def post_restaurant_config():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        current = skill_packs["restaurant_v1"]
+        tables = dict(current.tables)
+        if "tables" in body:
+            new_entries = body["tables"]
+            valid = isinstance(new_entries, dict) and all(
+                isinstance(table_id, str)
+                and isinstance(capacity, int)
+                and not isinstance(capacity, bool)
+                and capacity > 0
+                for table_id, capacity in new_entries.items()
+            )
+            if not valid:
+                return (
+                    jsonify({"error": "'tables' must be an object of table id -> positive integer capacity"}),
+                    400,
+                )
+            tables.update(new_entries)
+
+        working_hours = dict(current.working_hours)
+        if "working_hours" in body:
+            if not isinstance(body["working_hours"], dict):
+                return jsonify({"error": "'working_hours' must be an object with 'open'/'close'"}), 400
+            working_hours = body["working_hours"]
+
+        try:
+            new_pack = RestaurantSkillPack(tables=tables, working_hours=working_hours)
+        except (ValueError, KeyError) as exc:
+            return jsonify({"error": f"invalid config: {exc}"}), 400
+
+        skill_packs["restaurant_v1"] = new_pack
+        return jsonify({"tables": new_pack.tables, "working_hours": new_pack.working_hours}), 200
 
     return app
 
