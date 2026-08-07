@@ -1,0 +1,1134 @@
+{
+  "summary": {
+    "dataset_size": 40,
+    "requests_made": 40,
+    "requests_daily_limit": "1000",
+    "requests_remaining_after_run": "919",
+    "fraction_of_daily_allowance_used": 0.04,
+    "total_tokens_used": 27488,
+    "llm_path_used_rate": 1.0,
+    "llm_path_fallback_rate": 0.0,
+    "field_precision": 0.8955223880597015,
+    "field_recall": 0.9523809523809523,
+    "field_f1": 0.923076923076923,
+    "field_tp": 60,
+    "field_fp": 7,
+    "field_fn": 3,
+    "start_time_accuracy": 0.92,
+    "start_time_scored_examples": 25,
+    "offline_confirmed_rate": 0.125,
+    "llm_confirmed_rate": 0.125,
+    "latency_avg_s": 0.30974370249991806,
+    "latency_p50_s": 0.237199099999998,
+    "latency_p95_s": 0.6162552000005235,
+    "latency_max_s": 0.7776687999994465,
+    "model": "llama-3.3-70b-versatile",
+    "base_url": "https://api.groq.com/openai/v1",
+    "run_timestamp": "2026-08-06T23:38:01.585632"
+  },
+  "results": [
+    {
+      "id": "clinic-01",
+      "sector": "clinic",
+      "text": "I need to see Dr. Salem next Tuesday morning",
+      "category": "ambiguous_time",
+      "offline_fields": {
+        "time_period": "morning",
+        "practitioner": "Dr. Salem"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Salem",
+        "time_period": "morning",
+        "start_time": "2026-08-11 00:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.3409013000000414,
+      "llm_tokens_total": 694,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-02",
+      "sector": "clinic",
+      "text": "Can I book an appointment with Dr. Chen for this Friday at 3pm?",
+      "category": "happy_path",
+      "offline_fields": {
+        "start_time": "2026-08-07 15:00:00",
+        "practitioner": "Dr. Chen"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Chen",
+        "start_time": "2026-08-07 15:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.19822059999933117,
+      "llm_tokens_total": 691,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-03",
+      "sector": "clinic",
+      "text": "book me in with the doctor tomorrow",
+      "category": "missing_field",
+      "offline_fields": {},
+      "llm_fields": {
+        "start_time": "2026-08-07 00:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.23898869999902672,
+      "llm_tokens_total": 671,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-04",
+      "sector": "clinic",
+      "text": "Need a checkup sometime next week",
+      "category": "missing_field_multiple",
+      "offline_fields": {},
+      "llm_fields": {
+        "time_period": "afternoon"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.5155974999997852,
+      "llm_tokens_total": 661,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 0,
+        "fp": 1,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-05",
+      "sector": "clinic",
+      "text": "Dr Salem 9am monday pls",
+      "category": "casual_shorthand",
+      "offline_fields": {
+        "start_time": "2026-08-10 09:00:00",
+        "practitioner": "Dr. Salem"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Salem",
+        "start_time": "2026-08-10 09:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.5890386999999464,
+      "llm_tokens_total": 682,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-06",
+      "sector": "clinic",
+      "text": "I'd like an appointment with Dr. Amara at 7am on Wednesday",
+      "category": "out_of_hours",
+      "offline_fields": {
+        "start_time": "2026-08-12 07:00:00",
+        "practitioner": "Dr. Amara"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Amara",
+        "start_time": "2026-08-12 07:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.7776687999994465,
+      "llm_tokens_total": 693,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-07",
+      "sector": "clinic",
+      "text": "My son needs to see Dr. Lee, is 2pm Thursday free?",
+      "category": "ambiguous_patient",
+      "offline_fields": {
+        "start_time": "2026-08-06 14:00:00",
+        "practitioner": "Dr. Lee"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Lee",
+        "start_time": "2026-08-06 14:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.22577340000134427,
+      "llm_tokens_total": 690,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 1
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-08",
+      "sector": "clinic",
+      "text": "urgent - need to see any available doctor today",
+      "category": "missing_field_underspecified",
+      "offline_fields": {
+        "urgency": "urgent"
+      },
+      "llm_fields": {
+        "urgency": "urgent",
+        "start_time": "2026-08-06 00:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.1973933000008401,
+      "llm_tokens_total": 681,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-09",
+      "sector": "clinic",
+      "text": "reschedule my appointment with Dr. Salem to next Tuesday 10am",
+      "category": "unsupported_action",
+      "offline_fields": {
+        "start_time": "2026-08-18 10:00:00",
+        "practitioner": "Dr. Salem",
+        "action": "reschedule"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Salem",
+        "action": "reschedule",
+        "start_time": "2026-08-18 10:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.21247719999882975,
+      "llm_tokens_total": 697,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-10",
+      "sector": "clinic",
+      "text": "Dr. Salem, patient Ahmed Omer, Tuesday 10:30am, annual physical",
+      "category": "happy_path_detailed",
+      "offline_fields": {
+        "start_time": "2026-08-11 10:30:00",
+        "practitioner": "Dr. Salem",
+        "patient_name": "Ahmed Omer"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Salem",
+        "patient_name": "Ahmed Omer",
+        "start_time": "2026-08-11 10:30:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.237199099999998,
+      "llm_tokens_total": 706,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-11",
+      "sector": "clinic",
+      "text": "Dr. B this Thursday 14:30, patient Maria Lopez",
+      "category": "this_weekday_24h_time",
+      "offline_fields": {
+        "start_time": "2026-08-06 14:30:00",
+        "practitioner": "Dr. B",
+        "patient_name": "Maria Lopez"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. B",
+        "patient_name": "Maria Lopez",
+        "start_time": "2026-08-06 14:30:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.20726470000045083,
+      "llm_tokens_total": 697,
+      "offline_decision": "CONFIRMED",
+      "llm_decision": "CONFIRMED",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-12",
+      "sector": "clinic",
+      "text": "dr chen tomorrow 9am, patient Wes Ford",
+      "category": "lowercase_no_period_then_unknown_practitioner",
+      "offline_fields": {
+        "start_time": "2026-08-07 09:00:00",
+        "practitioner": "Dr. Chen",
+        "patient_name": "Wes Ford"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Chen",
+        "patient_name": "Wes Ford",
+        "start_time": "2026-08-07 09:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.5421127999998134,
+      "llm_tokens_total": 696,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-13",
+      "sector": "clinic",
+      "text": "Dr. Van Der Berg tomorrow 10am, patient John Doe",
+      "category": "multi_word_surname_limitation",
+      "offline_fields": {
+        "start_time": "2026-08-07 10:00:00",
+        "practitioner": "Dr. Van",
+        "patient_name": "John Doe"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. Van Der Berg",
+        "patient_name": "John Doe",
+        "start_time": "2026-08-07 10:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.18824959999983548,
+      "llm_tokens_total": 699,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 1
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-14",
+      "sector": "clinic",
+      "text": "Dr. A tonight 6pm, patient James Bond",
+      "category": "out_of_hours_evening_phrasing",
+      "offline_fields": {
+        "start_time": "2026-08-06 18:00:00",
+        "practitioner": "Dr. A",
+        "patient_name": "James Bond"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. A",
+        "patient_name": "James Bond",
+        "start_time": "2026-08-06 18:00:00",
+        "time_period": "evening"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.28783629999998084,
+      "llm_tokens_total": 704,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 1,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-15",
+      "sector": "clinic",
+      "text": "cancel my appointment with Dr. A",
+      "category": "unsupported_action_cancel",
+      "offline_fields": {
+        "practitioner": "Dr. A",
+        "action": "cancel"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. A",
+        "action": "cancel"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.1941205999992235,
+      "llm_tokens_total": 670,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-16",
+      "sector": "clinic",
+      "text": "Dr. A Friday 11am, patient Tom Reed",
+      "category": "bare_weekday_no_qualifier",
+      "offline_fields": {
+        "start_time": "2026-08-07 11:00:00",
+        "practitioner": "Dr. A",
+        "patient_name": "Tom Reed"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. A",
+        "patient_name": "Tom Reed",
+        "start_time": "2026-08-07 11:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.278630399998292,
+      "llm_tokens_total": 695,
+      "offline_decision": "CONFIRMED",
+      "llm_decision": "CONFIRMED",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-17",
+      "sector": "clinic",
+      "text": "Dr. B sometime next month, patient Lucy Grey",
+      "category": "unresolvable_date_phrase",
+      "offline_fields": {
+        "practitioner": "Dr. B",
+        "patient_name": "Lucy Grey"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. B",
+        "patient_name": "Lucy Grey"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.16820439999901282,
+      "llm_tokens_total": 676,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-18",
+      "sector": "clinic",
+      "text": "Dr. A this Monday afternoon, patient Nora Kim",
+      "category": "time_period_only_no_start_time",
+      "offline_fields": {
+        "time_period": "afternoon",
+        "practitioner": "Dr. A",
+        "patient_name": "Nora Kim"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. A",
+        "patient_name": "Nora Kim",
+        "time_period": "afternoon",
+        "start_time": "2026-08-10 00:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.26906380000036734,
+      "llm_tokens_total": 704,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "clinic-19",
+      "sector": "clinic",
+      "text": "Dr. B tomorrow 3pm, patient Ana Maria Torres",
+      "category": "patient_name_three_word_limitation",
+      "offline_fields": {
+        "start_time": "2026-08-07 15:00:00",
+        "practitioner": "Dr. B",
+        "patient_name": "Ana Maria"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. B",
+        "patient_name": "Ana Maria Torres",
+        "start_time": "2026-08-07 15:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.1966735999994853,
+      "llm_tokens_total": 697,
+      "offline_decision": "CONFIRMED",
+      "llm_decision": "CONFIRMED",
+      "field_score": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 1
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "clinic-20",
+      "sector": "clinic",
+      "text": "Dr. A tomorrow 17:00, patient Ben Fox",
+      "category": "exact_close_boundary",
+      "offline_fields": {
+        "start_time": "2026-08-07 17:00:00",
+        "practitioner": "Dr. A",
+        "patient_name": "Ben Fox"
+      },
+      "llm_fields": {
+        "practitioner": "Dr. A",
+        "patient_name": "Ben Fox",
+        "start_time": "2026-08-07 17:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.2539756000005582,
+      "llm_tokens_total": 696,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-01",
+      "sector": "restaurant",
+      "text": "can I get a table for 4 tomorrow around 8pm",
+      "category": "happy_path",
+      "offline_fields": {
+        "start_time": "2026-08-07 20:00:00",
+        "party_size": "4"
+      },
+      "llm_fields": {
+        "party_size": "4",
+        "start_time": "2026-08-07 20:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.2536428999992495,
+      "llm_tokens_total": 685,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-02",
+      "sector": "restaurant",
+      "text": "table for two tonight",
+      "category": "missing_field",
+      "offline_fields": {
+        "party_size": "2"
+      },
+      "llm_fields": {
+        "party_size": "2",
+        "start_time": "2026-08-06 19:00:00",
+        "time_period": "evening"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.23307939999904193,
+      "llm_tokens_total": 685,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-03",
+      "sector": "restaurant",
+      "text": "We're a group of 12, do you have space this Saturday evening?",
+      "category": "over_capacity",
+      "offline_fields": {
+        "time_period": "evening",
+        "party_size": "12"
+      },
+      "llm_fields": {
+        "party_size": "12",
+        "time_period": "evening"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.5218073000014556,
+      "llm_tokens_total": 677,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-04",
+      "sector": "restaurant",
+      "text": "booking for 6 people at 9:45pm friday, need it done fast!!",
+      "category": "casual_urgent",
+      "offline_fields": {
+        "start_time": "2026-08-07 21:45:00",
+        "party_size": "6"
+      },
+      "llm_fields": {
+        "party_size": "6",
+        "start_time": "2026-08-14 21:45:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.543363999999201,
+      "llm_tokens_total": 690,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-05",
+      "sector": "restaurant",
+      "text": "reserve outdoor seating for 3, sunday lunch",
+      "category": "preference_extra_field",
+      "offline_fields": {
+        "time_period": "lunch",
+        "party_size": "3",
+        "seating_preference": "outdoor"
+      },
+      "llm_fields": {
+        "party_size": "3",
+        "time_period": "lunch",
+        "seating_preference": "outdoor"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.4967670000005455,
+      "llm_tokens_total": 681,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-06",
+      "sector": "restaurant",
+      "text": "party of 5 at 11pm wednesday",
+      "category": "out_of_hours",
+      "offline_fields": {
+        "start_time": "2026-08-12 23:00:00",
+        "party_size": "5"
+      },
+      "llm_fields": {
+        "party_size": "5",
+        "start_time": "2026-08-12 23:00:00",
+        "time_period": "evening"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.23889740000049642,
+      "llm_tokens_total": 693,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-07",
+      "sector": "restaurant",
+      "text": "can we get a table for 4, no specific time, whenever's free today",
+      "category": "ambiguous_time",
+      "offline_fields": {
+        "party_size": "4"
+      },
+      "llm_fields": {
+        "party_size": "4"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.22064279999904102,
+      "llm_tokens_total": 670,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-08",
+      "sector": "restaurant",
+      "text": "table for 1 please, asap",
+      "category": "edge_small_party",
+      "offline_fields": {
+        "party_size": "1",
+        "urgency": "asap"
+      },
+      "llm_fields": {
+        "party_size": "1"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.17480000000068685,
+      "llm_tokens_total": 661,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-09",
+      "sector": "restaurant",
+      "text": "need a table for our anniversary dinner, party of 2, saturday 7pm, quiet corner if possible",
+      "category": "preference_extra_field",
+      "offline_fields": {
+        "start_time": "2026-08-08 19:00:00",
+        "party_size": "2",
+        "seating_preference": "quiet corner",
+        "occasion": "anniversary"
+      },
+      "llm_fields": {
+        "party_size": "2",
+        "start_time": "2026-08-08 19:00:00",
+        "seating_preference": "quiet corner",
+        "occasion": "anniversary"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.23267759999907867,
+      "llm_tokens_total": 713,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-10",
+      "sector": "restaurant",
+      "text": "table 4 2nite 8",
+      "category": "casual_shorthand",
+      "offline_fields": {},
+      "llm_fields": {
+        "party_size": "4",
+        "start_time": "2026-08-06 20:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.18058320000091044,
+      "llm_tokens_total": 680,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-11",
+      "sector": "restaurant",
+      "text": "group of 5 this Saturday at 20:00, under the name Priya Shah",
+      "category": "group_of_phrasing_plus_customer_name",
+      "offline_fields": {
+        "start_time": "2026-08-08 20:00:00",
+        "party_size": "5",
+        "customer_name": "Priya Shah"
+      },
+      "llm_fields": {
+        "party_size": "5",
+        "customer_name": "Priya Shah",
+        "start_time": "2026-08-15 20:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.24551160000009986,
+      "llm_tokens_total": 700,
+      "offline_decision": "CONFIRMED",
+      "llm_decision": "CONFIRMED",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-12",
+      "sector": "restaurant",
+      "text": "6 guests tomorrow at 19:30",
+      "category": "guests_word_phrasing",
+      "offline_fields": {
+        "start_time": "2026-08-07 19:30:00",
+        "party_size": "6"
+      },
+      "llm_fields": {
+        "party_size": "6",
+        "start_time": "2026-08-07 19:30:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.549784599999839,
+      "llm_tokens_total": 680,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-13",
+      "sector": "restaurant",
+      "text": "table for 8 tomorrow 6pm",
+      "category": "exact_capacity_boundary_fits",
+      "offline_fields": {
+        "start_time": "2026-08-07 18:00:00",
+        "party_size": "8"
+      },
+      "llm_fields": {
+        "party_size": "8",
+        "start_time": "2026-08-07 18:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.2360592999993969,
+      "llm_tokens_total": 680,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-14",
+      "sector": "restaurant",
+      "text": "table for 9 tomorrow 6pm",
+      "category": "exact_capacity_boundary_exceeds",
+      "offline_fields": {
+        "start_time": "2026-08-07 18:00:00",
+        "party_size": "9"
+      },
+      "llm_fields": {
+        "party_size": "9",
+        "start_time": "2026-08-07 18:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.214560899999924,
+      "llm_tokens_total": 680,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-15",
+      "sector": "restaurant",
+      "text": "table for 2 next Friday at 12:30pm, window seat please",
+      "category": "seating_preference_window",
+      "offline_fields": {
+        "start_time": "2026-08-14 12:30:00",
+        "party_size": "2",
+        "seating_preference": "window seat"
+      },
+      "llm_fields": {
+        "party_size": "2",
+        "start_time": "2026-08-14 12:30:00",
+        "seating_preference": "window seat"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.19750810000005004,
+      "llm_tokens_total": 698,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-16",
+      "sector": "restaurant",
+      "text": "patio seating for 4 this Sunday dinner",
+      "category": "preference_plus_period_no_start_time",
+      "offline_fields": {
+        "time_period": "dinner",
+        "party_size": "4",
+        "seating_preference": "patio"
+      },
+      "llm_fields": {
+        "party_size": "4",
+        "time_period": "dinner",
+        "seating_preference": "patio"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.2247592000003351,
+      "llm_tokens_total": 681,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    },
+    {
+      "id": "rest-17",
+      "sector": "restaurant",
+      "text": "party of 6 next Saturday 7pm, it's a birthday celebration",
+      "category": "occasion_birthday",
+      "offline_fields": {
+        "start_time": "2026-08-15 19:00:00",
+        "party_size": "6",
+        "occasion": "birthday"
+      },
+      "llm_fields": {
+        "party_size": "6",
+        "start_time": "2026-08-15 19:00:00",
+        "occasion": "birthday"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.6162552000005235,
+      "llm_tokens_total": 694,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-18",
+      "sector": "restaurant",
+      "text": "table for 3 tomorrow at 6pm under the name Carlos Mendez",
+      "category": "customer_name_explicit",
+      "offline_fields": {
+        "start_time": "2026-08-07 18:00:00",
+        "party_size": "3",
+        "customer_name": "Carlos Mendez"
+      },
+      "llm_fields": {
+        "party_size": "3",
+        "customer_name": "Carlos Mendez",
+        "start_time": "2026-08-07 18:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.2020597999999154,
+      "llm_tokens_total": 697,
+      "offline_decision": "CONFIRMED",
+      "llm_decision": "CONFIRMED",
+      "field_score": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-19",
+      "sector": "restaurant",
+      "text": "table for 2 tomorrow at 11:00am",
+      "category": "exact_open_boundary",
+      "offline_fields": {
+        "start_time": "2026-08-07 11:00:00",
+        "party_size": "2"
+      },
+      "llm_fields": {
+        "party_size": "2",
+        "start_time": "2026-08-07 11:00:00"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.5235968000015419,
+      "llm_tokens_total": 683,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": true,
+      "start_time_correct": true
+    },
+    {
+      "id": "rest-20",
+      "sector": "restaurant",
+      "text": "table for 4 sometime this month",
+      "category": "unresolvable_date_phrase",
+      "offline_fields": {
+        "party_size": "4"
+      },
+      "llm_fields": {
+        "party_size": "4"
+      },
+      "llm_call_used": true,
+      "llm_call_error": null,
+      "llm_latency_s": 0.16400059999978112,
+      "llm_tokens_total": 660,
+      "offline_decision": "PENDING_APPROVAL",
+      "llm_decision": "PENDING_APPROVAL",
+      "field_score": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "start_time_scored": false,
+      "start_time_correct": false
+    }
+  ]
+}
