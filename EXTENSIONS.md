@@ -77,8 +77,37 @@ nothing here answers -- but this is an incidental side effect of
 JSON-only parsing, not a deliberate control, and must not be relied on if
 these endpoints' accepted content types ever widen.
 
-See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the full
-design rationale.
+**2026-08-07 redesign:** rebuilt around a tab bar (Book | Pending | Audit:
+Clinic | Audit: Restaurant | Config) with a Warm Neutral visual style.
+Two new capabilities: (1) `PENDING_APPROVAL` requests with a complete,
+understood booking (unknown practitioner, over capacity, conflict) are
+now queued in a file-backed `PendingRequestStore`
+(`eais_scheduling_agent/pending.py`) for a human to accept or reject on
+the new Pending tab -- accepting replays the exact
+`slot_rules()`/`check_conflict()`/`persist()` sequence
+`core/orchestrator.py` already uses internally, so acceptance can never
+diverge from the core's own decision logic; (2) requests where intake
+couldn't extract enough (`missing required field(s): ...`) are now a
+distinct `NEEDS_CLARIFICATION` response instead of being lumped in with
+`PENDING_APPROVAL` -- there's no complete booking to review in that case,
+just an inline message asking for more detail. The audit trail is also
+now genuinely split into `audit.clinic.jsonl` / `audit.restaurant.jsonl`
+(web server only -- the CLI's `audit.jsonl` is unaffected), with
+`GET /audit`'s existing no-argument merged view kept for backward
+compatibility. (3) Each sector's slot rules (clinic: practitioners and
+their appointment duration; restaurant: tables and their seat capacity;
+both: working hours) are now viewable and editable from that sector's
+audit tab via `GET/POST /config/clinic` and `GET/POST /config/restaurant`
+-- additive/corrective only (add a practitioner, change a duration), no
+deletion. `ClinicSkillPack`/`RestaurantSkillPack` gained one read-only
+property each (`practitioners`/`tables`, mirroring the existing
+`working_hours` property); all mutation happens by constructing a new
+skill pack instance and swapping it into the `skill_packs` dict
+`create_app()` already holds, not by adding setters to those classes.
+
+See `docs/superpowers/specs/2026-08-06-web-ui-design.md` for the original
+design rationale and `docs/superpowers/specs/2026-08-07-dashboard-redesign-design.md`
+for this redesign's.
 
 ### 3. Playwright end-to-end tests *(planned, not yet built)*
 

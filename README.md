@@ -204,14 +204,31 @@ truly concurrent requests are not guaranteed to serialize correctly.
 ## Web dashboard (optional)
 
 With the server running (see above), open `http://127.0.0.1:5000/` in a
-browser for a simple dashboard: make a booking, view the audit trail, and
-view/change the LLM backend config for the running server.
+browser. Five tabs:
 
-- `GET /config` / `POST /config` -- view or change `base_url`/`model`/
-  `api_key`/`timeout` at runtime, without restarting the server. The API
+- **Book** -- make a booking. Three possible outcomes, each styled
+  distinctly: Confirmed (green), sent for human review (terracotta,
+  violation/conflict cases), or needs clarification (rose, when intake
+  couldn't extract enough from the text -- an inline message, not queued
+  anywhere).
+- **Pending** -- requests with a complete, understood booking that needs
+  a human's judgment call (unknown practitioner, over capacity, slot
+  conflict). Accept persists it as a real confirmed booking; Reject
+  discards it. Both are logged to the audit trail. Survives a server
+  restart (file-backed, unlike the in-memory booking store).
+- **Audit: Clinic** / **Audit: Restaurant** -- genuinely separate audit
+  files per sector (`audit.clinic.jsonl` / `audit.restaurant.jsonl`), each
+  with a "Slot rules" card above the audit table showing that sector's
+  practitioners (clinic) or tables (restaurant) and working hours, with
+  an Edit form to add a practitioner/table or change a duration/capacity
+  or the working hours. Additive/corrective only -- no way to remove an
+  existing practitioner or table from this UI.
+- **Config** -- view or change the LLM backend (`base_url`/`model`/
+  `api_key`/`timeout`) at runtime, without restarting the server. The API
   key is never sent back to the browser as its raw value, only whether
-  one is currently set (`api_key_set: true`/`false`).
-- Not part of the assessment brief's scope -- see `EXTENSIONS.md`.
+  one is currently set.
+
+Not part of the assessment brief's scope -- see `EXTENSIONS.md`.
 
 ## Run tests
 
