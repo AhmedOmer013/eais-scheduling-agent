@@ -63,3 +63,17 @@ What *is* adopted is the reasoning behind each:
 - From **MCP**: a versioned, declarative manifest as the single source of truth for what's enabled, read once and validated, not inferred from code paths.
 
 This keeps the core small enough to audit by eye against R1 (no sector-specific branching), while still being built on ideas that are proven at a larger scale than our own use case.
+
+---
+
+## Appendix: Related Products — Market Landscape
+
+The four sections above survey *architecture components* (candidates for building the agent core). This appendix is a different category: existing *end-user scheduling products and booking agents* reviewed for feature/positioning overlap with what this project builds — natural-language booking intake, multi-sector support (clinic and restaurant), in-memory conflict detection, an audit trail, and a CLI plus optional HTTP interface. None of these were adopted as dependencies or design inputs; they're included as competitive context.
+
+- **[Cal.com](https://cal.com/blog/open-source-scheduling-empower-your-team-with-customizable-features)** ([cal.diy fork](https://cal.com/blog/cal-diy-open-source-to-closed-source)) — open-source, self-hostable scheduling infrastructure with an API-first design (bookings, event types, availability, webhooks). Closest analogue to this project's optional HTTP interface, though it targets general meeting scheduling, not sector-specific booking rules.
+- **[Retell AI](https://www.retellai.com/blog/top-8-ai-voice-agents-for-appointment-scheduling-in-clinics-and-healthcare) / [Vapi / Bland AI](https://builts.ai/blog/vapi-vs-bland-ai-vs-retell-ai/)** — paid AI voice/chat agent platforms for appointment booking, comparable to this project's LLM intake layer but hosted-only (no offline/local-inference option).
+- **[Easy!Appointments](https://github.com/alextselegidis/easyappointments)** — open-source, self-hosted PHP/MySQL scheduler supporting multiple services/providers/locations, the same multi-sector shape as the clinic/restaurant split, but with a structured-form intake rather than natural language.
+- **[Acuity Scheduling](https://acuityscheduling.com/features)** ([pricing](https://acuityscheduling.com/pricing)) — paid SaaS scheduler for service businesses (clinics, salons, studios); a baseline for what a production non-AI competitor in the same vertical offers as table stakes.
+- **[appointment-agent (mjunaidca)](https://github.com/mjunaidca/appointment-agent)** — open-source LangGraph-based booking agent for dental clinics with Google Calendar/Gmail integration. Conceptually the closest open-source project (LLM agent over a scheduling backend for a clinic use case), though it delegates the booking backend to external SaaS rather than owning conflict detection and audit in-process.
+
+**Differentiator:** none of the above combine offline-first LLM intake with automatic rule-based fallback, an in-house conflict-detection/audit-trail core, and validated sector-agnosticism (clinic and restaurant in one codebase) the way this project does.
