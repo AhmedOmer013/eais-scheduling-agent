@@ -11,6 +11,7 @@ audit.jsonl
 audit.clinic.jsonl
 audit.restaurant.jsonl
 pending_requests.json
+audit.eval.jsonl
 .worktrees/
 .superpowers/
 

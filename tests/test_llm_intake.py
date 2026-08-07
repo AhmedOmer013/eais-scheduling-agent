@@ -134,6 +134,31 @@ class TestOpenAICompatibleHTTPClient:
 
         assert captured["authorization"] == "Bearer secret-key"
 
+    def test_sends_a_non_default_user_agent(self, monkeypatch):
+        """Real hosted providers (Groq confirmed) front their API with
+        Cloudflare, which returns a bare 403 (Cloudflare error 1010) for
+        `urllib`'s default `Python-urllib/x.y` User-Agent -- indistinguishable
+        from any other client failure once `LLMIntake.parse()` catches it, so
+        this would otherwise fail silently into the offline fallback on
+        every single request. Verified against the real Groq API before
+        writing this test.
+        """
+        captured = {}
+
+        def fake_urlopen(request, timeout):
+            captured["user_agent"] = request.get_header("User-agent")
+            return _FakeHTTPResponse(
+                json.dumps({"choices": [{"message": {"content": "{}"}}]}).encode("utf-8")
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+        client = OpenAICompatibleHTTPClient(base_url="http://example.invalid/v1", model="m")
+
+        client("prompt")
+
+        assert captured["user_agent"] is not None
+        assert "python-urllib" not in captured["user_agent"].lower()
+
     def test_trailing_slash_on_base_url_does_not_double_up(self, monkeypatch):
         captured = {}
 
@@ -420,14 +445,61 @@ class TestPromptBuildsWithoutNetwork:
     """
 
     def test_prompt_includes_the_input_text_and_sector(self):
-        prompt = _build_prompt("table for 4 tomorrow at 8pm", "restaurant")
+        prompt = _build_prompt(
+            "table for 4 tomorrow at 8pm", "restaurant", reference_date=datetime(2026, 8, 6)
+        )
         assert "table for 4 tomorrow at 8pm" in prompt
         assert "restaurant" in prompt
 
     def test_prompt_includes_few_shot_examples(self):
-        prompt = _build_prompt("anything", "clinic")
+        prompt = _build_prompt("anything", "clinic", reference_date=datetime(2026, 8, 6))
         assert "Dr. Chen" in prompt
         assert "practitioner" in prompt
+
+    def test_prompt_includes_reference_date_and_weekday(self):
+        # 2026-08-06 is a Thursday -- ground truth for relative-date
+        # resolution ("this Wednesday", "next Tuesday") the model would
+        # otherwise have to guess with no notion of "today" at all.
+        prompt = _build_prompt("anything", "clinic", reference_date=datetime(2026, 8, 6, 9, 30))
+        assert "2026-08-06" in prompt
+        assert "Thursday" in prompt
+
+
+class TestReferenceDateInjection:
+    """`LLMIntake` resolves its own `now` (defaulting to the real
+    `datetime.now`, injectable for tests -- same pattern as `OfflineIntake`)
+    and threads it into `_build_prompt`, so the model is told what day it
+    actually is rather than guessing relative dates blind.
+    """
+
+    def test_parse_passes_injected_now_into_the_prompt(self):
+        captured = {}
+
+        def client(prompt: str) -> str:
+            captured["prompt"] = prompt
+            return "{}"
+
+        fixed_now = lambda: datetime(2026, 8, 6, 12, 0, 0)
+        intake = LLMIntake(fallback=_SpyFallback(), client=client, now=fixed_now)
+
+        intake.parse("some text", "clinic")
+
+        assert "2026-08-06" in captured["prompt"]
+        assert "Thursday" in captured["prompt"]
+
+    def test_defaults_to_real_datetime_now(self):
+        captured = {}
+
+        def client(prompt: str) -> str:
+            captured["prompt"] = prompt
+            return "{}"
+
+        intake = LLMIntake(fallback=_SpyFallback(), client=client)
+
+        before = datetime.now().strftime("%Y-%m-%d")
+        intake.parse("some text", "clinic")
+
+        assert before in captured["prompt"]
 
 
 class TestUnknownSectorDoesNotCrash:
